@@ -1,0 +1,3 @@
+tqdm~=4.66
+aiohttp~=3.10
+pydicom~=3.0
