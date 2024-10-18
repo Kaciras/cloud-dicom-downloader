@@ -73,7 +73,7 @@ ws.addEventListener("message", async ({ data }) => {
 		return; // 451 开头的回复消息，没什么用。
 	}
 	const id = series[seriesIndex];
-	const file = join(outDir, id, imageIndex + ".dicom");
+	const file = join(outDir, id, imageIndex + ".dcm");
 
 	console.log("Download: " + file);
 	mkdirSync(dirname(file), { recursive: true });
