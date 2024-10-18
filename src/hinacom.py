@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 import sys
@@ -12,10 +13,6 @@ from pydicom.uid import ExplicitVRLittleEndian
 from pydicom.valuerep import VR, STR_VR, INT_VR, FLOAT_VR
 from tqdm import tqdm
 
-# 报告分享的 URL
-URL = "https://xxx.medicalimagecloud.com/t/xxx...xxx"
-# 分享密码
-PASSWORD = "xxxxxx"
 # 保存位置
 SAVE_DIR = Path("dicom")
 # 保存中间输出，仅调试用
@@ -31,25 +28,26 @@ _HEADERS = {
 
 _LINK_VIEW = re.compile(r"/Study/ViewImage\?studyId=([\w-]+)")
 _LINK_ENTRY = re.compile(r"window\.location\.href = '([^']+)'")
-_LINK_REx = re.compile(r'var TARGET_PATH = "([^"]+)"')
+_TARGET_PATH = re.compile(r'var TARGET_PATH = "([^"]+)"')
 _VAR_RE = re.compile(r'var (STUDY_ID|ACCESSION_NUMBER|STUDY_EXAM_UID|LOAD_IMAGE_CACHE_KEY) = "([^"]+)"')
 
 _REFRESH_CAC = timedelta(minutes=1)
 
 
 async def get_viewer_url():
-	print(f"下载海纳医信 DICOM，报告 ID：{URL.split('/')[-1]}，密码：{PASSWORD}")
-	_headers = {"content-type": "application/x-www-form-urlencoded"}
+	share_url, password = sys.argv[1:3]
+	print(f"下载海纳医信 DICOM，报告 ID：{share_url.split('/')[-1]}，密码：{password}")
 
 	async with aiohttp.ClientSession(headers=_HEADERS, raise_for_status=True) as client:
 		# 先是入口页面，它会重定向到登录页并设置一个 Cookie
-		async with client.get(URL) as response:
+		async with client.get(share_url) as response:
 			url = response.real_url
 			origin = str(url.origin())
 			uuid = url.path.split("/")[-1]
 
 		# 登录报告页，成功后又会拿到 Cookies，从中找查看影像的链接。
-		async with client.post(url, data=f"id={uuid}&Password={PASSWORD}", headers=_headers) as response:
+		_headers = {"content-type": "application/x-www-form-urlencoded"}
+		async with client.post(url, data=f"id={uuid}&Password={password}", headers=_headers) as response:
 			html = await response.text()
 			return origin + _LINK_VIEW.search(html).group(0)
 
@@ -58,24 +56,22 @@ async def download():
 	url = await get_viewer_url()
 
 	async with aiohttp.ClientSession(headers=_HEADERS, raise_for_status=True) as client:
+		# 访问查影像的链接。
 		async with client.get(url) as response:
 			html2 = await response.text()
-			Path("temp.html").write_text(html2)
 			matches = _LINK_ENTRY.search(html2)
 
+		# 中间不知道为什么又要跳转一次，端口还变了。
 		async with client.get(matches.group(1)) as response:
 			html3 = await response.text("utf-8")
 			client._base_url = response.real_url.origin()
-			matches = _LINK_REx.search(html3)
+			matches = _TARGET_PATH.search(html3)
 
 		# 查看器页，关键信息就写在 JS 里。
 		async with client.get(matches.group(1)) as response:
 			html4 = await response.text()
-			matches = _VAR_RE.findall(html4)
-			top_study_id = matches[0][1]
-			accession_number = matches[1][1]
-			exam_uid = matches[2][1]
-			ck = matches[3][1]
+			matches = [x.group(1) for x in _VAR_RE.finditer(html4)]
+			top_study_id, accession_number, exam_uid, ck = matches
 
 		login_time = datetime.now()
 		params = {
@@ -125,24 +121,27 @@ async def download():
 					(await client.get("/ImageViewer/renewcacauth")).close()
 
 
-def _maybe_mv(value: str, cast_fn):
+def _cast_value_type(value: str, vr: str):
+	"""
+	在 pydicom 里没找到自动转换的功能，得自己处理下类型。
+	https://stackoverflow.com/a/77661160/7065321
+	"""
+	if vr == VR.AT:
+		return Tag(value)
+
+	if vr in STR_VR:
+		cast_fn = str
+	elif vr in INT_VR or vr == "US or SS":
+		cast_fn = int
+	elif vr in FLOAT_VR:
+		cast_fn = float
+	else:
+		raise NotImplementedError("Unsupported VR: " + vr)
+
 	parts = value.split("\\")
 	if len(parts) == 1:
 		return cast_fn(value)
-	return [cast_fn(p) for p in parts]
-
-
-def _cast_value_type(value: str, vr: str):
-	if vr == VR.AT:
-		return Tag(value)
-	if vr in STR_VR:
-		return _maybe_mv(value, str)
-	if vr in INT_VR or vr == "US or SS":
-		return _maybe_mv(value, int)
-	if vr in FLOAT_VR:
-		return _maybe_mv(value, float)
-
-	raise NotImplementedError("Unsupported VR")
+	return [cast_fn(x) for x in parts]
 
 
 def _write_dicom(metadata, pixels, tags, file):
@@ -164,6 +163,7 @@ def _write_dicom(metadata, pixels, tags, file):
 	# 	group, element = int(group, 16), int(element, 16)
 	# 	ds.add_new_private(private_creator, group, element, item["value"], "UN")
 
+	# 大部分都是首字母变小写了，但并不是全部。
 	ds.PixelRepresentation = 1 if metadata["signed"] else 0
 	ds.BitsAllocated = metadata["bitsAllocated"]
 	ds.BitsStored = metadata["bitsStored"]
@@ -226,11 +226,6 @@ def build_dicom_files():
 			_write_dicom(meta, pixels, tags, out_dir / f"{i}.dcm")
 
 
-async def main():
-	await download()
-	build_dicom_files()
-
-
 if __name__ == '__main__':
-	# asyncio.run(main())
-	build_dicom_files()
+	asyncio.run(download())
+# build_dicom_files()
