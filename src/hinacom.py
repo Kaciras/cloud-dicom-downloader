@@ -8,8 +8,9 @@ from pathlib import Path
 import aiohttp
 from pydicom.datadict import DicomDictionary
 from pydicom.dataset import Dataset, FileMetaDataset
+from pydicom.encaps import encapsulate
 from pydicom.tag import Tag
-from pydicom.uid import ExplicitVRLittleEndian
+from pydicom.uid import ExplicitVRLittleEndian, JPEG2000Lossless
 from pydicom.valuerep import VR, STR_VR, INT_VR, FLOAT_VR
 from tqdm import tqdm
 
@@ -55,6 +56,11 @@ async def get_viewer_url():
 async def download():
 	url = await get_viewer_url()
 
+	if "--j2k" in sys.argv[3:]:
+		image_service = "/imageservice/api/image/j2k/{}/{}/0/3"
+	else:
+		image_service = "/imageservice/api/image/dicom/{}/{}/0/0"
+
 	async with aiohttp.ClientSession(headers=_HEADERS, raise_for_status=True) as client:
 		# 访问查影像的链接。
 		async with client.get(url) as response:
@@ -70,8 +76,11 @@ async def download():
 		# 查看器页，关键信息就写在 JS 里。
 		async with client.get(matches.group(1)) as response:
 			html4 = await response.text()
-			matches = [x.group(1) for x in _VAR_RE.finditer(html4)]
-			top_study_id, accession_number, exam_uid, ck = matches
+			matches = _VAR_RE.findall(html4)
+			top_study_id = matches[0][1]
+			accession_number = matches[1][1]
+			exam_uid = matches[2][1]
+			cache_key = matches[3][1]
 
 		login_time = datetime.now()
 		params = {
@@ -86,14 +95,12 @@ async def download():
 			print(f'检查：{image_set["studyDescription"]}')
 			print(f'日期：{image_set["studyDate"]}\n')
 
-			file = Path(f"dicom/DataSet.json")
+			file = TEMP_DIR / "DataSet.json"
 			file.parent.mkdir(parents=True, exist_ok=True)
 			file.write_text(json.dumps(image_set))
 
 		for series in image_set["displaySets"]:
 			name, images = series["description"].rstrip(), series["images"]
-			dir_ = Path(f"dicom/{name}")
-			dir_.mkdir()
 
 			params = {
 				"studyId": images[0]["studyId"],
@@ -103,13 +110,15 @@ async def download():
 			}
 			async with client.get("/ImageViewer/GetImageDicomTags", params=params) as response:
 				tags = await response.read()
-				if tags == "[]":
+				if tags == b"[]": # 跳过多余的非 DICOM 图片
 					continue
+				dir_ = TEMP_DIR / name
+				dir_.mkdir()
 				(dir_ / "tags.json").write_bytes(tags)
 
 			for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
-				url = f"/imageservice/api/image/dicom/{info['studyId']}/{info['imageId']}/0/0"
-				async with client.get(url, params={"ck": ck}) as response:
+				url = image_service.format(info['studyId'], info['imageId'])
+				async with client.get(url, params={"ck": cache_key}) as response:
 					metadata = response.headers["X-ImageFrame"]
 					pixels = await response.read()
 
@@ -198,12 +207,18 @@ def _write_dicom(metadata, pixels, tags, file):
 	else:
 		ds.PixelPaddingValue = metadata["pixelPaddingValue"]
 
-	ds.PixelData = pixels
 
 	ds.file_meta = FileMetaDataset()
 	ds.file_meta.MediaStorageSOPClassUID = ds.SOPClassUID
 	ds.file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
-	ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+
+	if "--j2k" in sys.argv[3:]:
+		ds.file_meta.TransferSyntaxUID = JPEG2000Lossless
+		ds.PixelData = encapsulate([pixels])
+	else:
+		ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+		ds.PixelData = pixels
+
 	ds.save_as(file, enforce_file_format=True)
 
 
@@ -228,4 +243,4 @@ def build_dicom_files():
 
 if __name__ == '__main__':
 	asyncio.run(download())
-# build_dicom_files()
+	# build_dicom_files()
