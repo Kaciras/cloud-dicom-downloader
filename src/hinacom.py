@@ -1,4 +1,3 @@
-import asyncio
 import json
 import re
 import sys
@@ -15,9 +14,9 @@ from pydicom.valuerep import VR, STR_VR, INT_VR, FLOAT_VR
 from tqdm import tqdm
 
 # 保存位置
-SAVE_DIR = Path("dicom")
+SAVE_DIR = Path("download/dicom")
 # 保存中间输出，仅调试用
-TEMP_DIR = Path("dicom_temp")
+TEMP_DIR = Path("download/dicom_temp")
 
 # ============================================================
 
@@ -35,8 +34,7 @@ _VAR_RE = re.compile(r'var (STUDY_ID|ACCESSION_NUMBER|STUDY_EXAM_UID|LOAD_IMAGE_
 _REFRESH_CAC = timedelta(minutes=1)
 
 
-async def get_viewer_url():
-	share_url, password = sys.argv[1:3]
+async def get_viewer_url(share_url, password):
 	print(f"下载海纳医信 DICOM，报告 ID：{share_url.split('/')[-1]}，密码：{password}")
 
 	async with aiohttp.ClientSession(headers=_HEADERS, raise_for_status=True) as client:
@@ -53,17 +51,17 @@ async def get_viewer_url():
 			return origin + _LINK_VIEW.search(html).group(0)
 
 
-async def download():
-	url = await get_viewer_url()
+async def run(viewer_url, password, *args):
+	viewer_url = await get_viewer_url(viewer_url, password)
 
-	if "--j2k" in sys.argv[3:]:
+	if "--j2k" in args:
 		image_service = "/imageservice/api/image/j2k/{}/{}/0/3"
 	else:
 		image_service = "/imageservice/api/image/dicom/{}/{}/0/0"
 
 	async with aiohttp.ClientSession(headers=_HEADERS, raise_for_status=True) as client:
 		# 访问查影像的链接。
-		async with client.get(url) as response:
+		async with client.get(viewer_url) as response:
 			html2 = await response.text()
 			matches = _LINK_ENTRY.search(html2)
 
@@ -110,15 +108,15 @@ async def download():
 			}
 			async with client.get("/ImageViewer/GetImageDicomTags", params=params) as response:
 				tags = await response.read()
-				if tags == b"[]":  # 跳过多余的非 DICOM 图片
+				if tags == b"[]":  # 跳过非 DCM 图片
 					continue
 				dir_ = TEMP_DIR / name
 				dir_.mkdir()
 				(dir_ / "tags.json").write_bytes(tags)
 
 			for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
-				url = image_service.format(info['studyId'], info['imageId'])
-				async with client.get(url, params={"ck": cache_key}) as response:
+				viewer_url = image_service.format(info['studyId'], info['imageId'])
+				async with client.get(viewer_url, params={"ck": cache_key}) as response:
 					metadata = response.headers["X-ImageFrame"]
 					pixels = await response.read()
 
@@ -170,38 +168,31 @@ def _write_dicom(metadata, pixels, tags, file):
 			setattr(ds, key, _cast_value_type(item["value"], vr))
 		else:
 			group, element = item["tag"].split(",")
-			group, element = int(group, 16), int(element, 16)
 			ds.add_new(Tag(group, element), "LO", item["value"])
 
 	# 大部分都是首字母变小写了，但并不是全部。
-	ds.PixelRepresentation = 1 if metadata["signed"] else 0
-	ds.BitsAllocated = metadata["bitsAllocated"]
-	ds.BitsStored = metadata["bitsStored"]
-	ds.HighBit = ds.BitsStored - 1
-	ds.Rows = metadata["rows"]
-	ds.Columns = metadata["columns"]
+	# rowCosines & columnCosines 已包含在 ImageOrientationPatient
+
 	ds.SamplesPerPixel = metadata["samplesPerPixel"]
 	ds.PhotometricInterpretation = metadata["photometricInterpretation"]
 	ds.RescaleIntercept = metadata["intercept"]
 	ds.RescaleSlope = metadata["slope"]
 	ds.WindowWidth = metadata["windowWidth"]
 	ds.WindowCenter = metadata["windowCenter"]
-	ds.InstanceNumber = metadata["instanceNumber"]
-	ds.FrameOfReferenceUID = metadata["frameOfReferenceUID"]
-	ds.Modality = metadata["modality"]
 	ds.SliceThickness = metadata["sliceThickness"]
-	ds.EchoNumbers = metadata["echoNumbers"]
-	ds.EchoTrainLength = metadata["echoTrainLength"]
+
 	ds.RepetitionTime = metadata["timeToRepetition"]
 	ds.EchoTime = metadata["timeToEcho"]
-	ds.KVP = metadata["kvp"]
-	ds.ExposureTime = metadata["exposureTime"]
-	ds.Exposure = metadata["exposure"]
+	ds.EchoNumbers = metadata["echoNumbers"]
+	ds.EchoTrainLength = metadata["echoTrainLength"]
+
+	ds.InstanceNumber = metadata["instanceNumber"]
 	ds.SliceLocation = metadata["sliceLocation"]
-	ds.ConvolutionKernel = metadata["convolutionKernel"]
-	ds.SmallestImagePixelValue = metadata["minPixelValue"]
-	ds.LargestImagePixelValue = metadata["maxPixelValue"]
-	ds.ImagePosition = metadata["imagePosition"]
+	ds.ImagePositionPatient = metadata["imagePosition"]
+
+	# 在标准中没找到毫米以外的单位，可否认为该值一定是 mm？
+	if metadata["pixelSpacingUnits"] != "mm":
+		raise NotImplementedError('PixelSpacing unit is not "mm"')
 
 	if ds.PixelRepresentation == 0:
 		ds.PixelPaddingValue = max(0, metadata["pixelPaddingValue"])
@@ -222,6 +213,7 @@ def _write_dicom(metadata, pixels, tags, file):
 
 
 def build_dicom_files():
+	"""调试用，读取所有临时文件夹的数据，生成跟正常下载一样的 DCM 文件"""
 	with TEMP_DIR.joinpath("DataSet.json").open() as fp:
 		studies = json.load(fp)
 		name_map = {s["description"].rstrip(): s for s in studies["displaySets"]}
@@ -241,5 +233,5 @@ def build_dicom_files():
 
 
 if __name__ == '__main__':
-	asyncio.run(download())
-	# build_dicom_files()
+	# asyncio.run(run())
+	build_dicom_files()
