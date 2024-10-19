@@ -1,3 +1,4 @@
 tqdm~=4.66
 aiohttp~=3.10
+yarl~=1.15
 pydicom~=3.0
