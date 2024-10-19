@@ -3,7 +3,7 @@ import sys
 
 from yarl import URL
 
-from src import szjudianyun, hinacom
+from crawlers import szjudianyun, hinacom
 
 
 def main():
