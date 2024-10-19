@@ -110,7 +110,7 @@ async def download():
 			}
 			async with client.get("/ImageViewer/GetImageDicomTags", params=params) as response:
 				tags = await response.read()
-				if tags == b"[]": # 跳过多余的非 DICOM 图片
+				if tags == b"[]":  # 跳过多余的非 DICOM 图片
 					continue
 				dir_ = TEMP_DIR / name
 				dir_.mkdir()
@@ -128,6 +128,7 @@ async def download():
 				# 每一分钟要刷新一下 CAC_AUTH 令牌
 				if datetime.now() - login_time >= _REFRESH_CAC:
 					(await client.get("/ImageViewer/renewcacauth")).close()
+					login_time = datetime.now()
 
 
 def _cast_value_type(value: str, vr: str):
@@ -157,21 +158,20 @@ def _write_dicom(metadata, pixels, tags, file):
 	ds = Dataset()
 	ds.file_meta = FileMetaDataset()
 
+	# 这里认为 tags 中除 metadata 外的都是 Series 共有的。
 	for item in tags:
 		group, element = item["tag"].split(",")
 		id_ = (int(group, 16) << 16) | int(element, 16)
 		definition = DicomDictionary.get(id_)
+
+		# /GetImageDicomTags 的响应不含 VR，故私有标签只能假设为 LO 类型。
 		if definition:
 			vr, key = definition[0], definition[4]
-			value = _cast_value_type(item["value"], vr)
-			setattr(ds, key, value)
+			setattr(ds, key, _cast_value_type(item["value"], vr))
 		else:
-			pass
-
-	# for item in private_items:
-	# 	group, element = item["tag"].split(",")
-	# 	group, element = int(group, 16), int(element, 16)
-	# 	ds.add_new_private(private_creator, group, element, item["value"], "UN")
+			group, element = item["tag"].split(",")
+			group, element = int(group, 16), int(element, 16)
+			ds.add_new(Tag(group, element), "LO", item["value"])
 
 	# 大部分都是首字母变小写了，但并不是全部。
 	ds.PixelRepresentation = 1 if metadata["signed"] else 0
