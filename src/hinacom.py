@@ -155,6 +155,7 @@ def _cast_value_type(value: str, vr: str):
 
 def _write_dicom(metadata, pixels, tags, file):
 	ds = Dataset()
+	ds.file_meta = FileMetaDataset()
 
 	for item in tags:
 		group, element = item["tag"].split(",")
@@ -207,8 +208,6 @@ def _write_dicom(metadata, pixels, tags, file):
 	else:
 		ds.PixelPaddingValue = metadata["pixelPaddingValue"]
 
-
-	ds.file_meta = FileMetaDataset()
 	ds.file_meta.MediaStorageSOPClassUID = ds.SOPClassUID
 	ds.file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
 

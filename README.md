@@ -24,5 +24,7 @@ node src/szjudianyun.js <url>
 
 ```
 pip install -r requirements.txt
-python src/hinacom.py <url> <password>
+python src/hinacom.py <url> <password> [--j2k]
 ```
+
+`--j2k` 如果指定该参数，则下载 JPEG2000 无损压缩的图像，没有则下载像素数据。

@@ -1,7 +1,7 @@
-import { argv } from "node:process";
-import { once } from "events";
-import { dirname, join } from "path";
-import { mkdirSync, writeFileSync } from "fs";
+import {argv} from "node:process";
+import {once} from "events";
+import {dirname, join} from "path";
+import {mkdirSync, writeFileSync} from "fs";
 
 const url = new URL(argv[2]);
 if (url.hostname !== "qr.szjudianyun.com") {
@@ -38,7 +38,7 @@ function sendMessage(id, message) {
 	ws.send(id + JSON.stringify(["sendMessage", message]));
 }
 
-async function getInfo() {
+async function getExamInfo() {
 	ws.send("2probe");
 	await once(ws, "message");
 	ws.send("5");
@@ -61,7 +61,7 @@ function requestDICOM(id, index) {
 }
 
 await once(ws, "open");
-const { series, series_dicom_number } = await getInfo();
+const { series, series_dicom_number } = await getExamInfo();
 
 let seriesIndex = 0;
 let imageIndex = 1;
@@ -85,6 +85,7 @@ ws.addEventListener("message", async ({ data }) => {
 		imageIndex = 0;
 		seriesIndex++;
 
+		// 最后会有一张非 DICOM 图片，跳过。
 		if (series[seriesIndex].startsWith("dfyfilm")) {
 			seriesIndex++;
 		}
@@ -94,4 +95,3 @@ ws.addEventListener("message", async ({ data }) => {
 	}
 	requestDICOM(series[seriesIndex], ++imageIndex);
 });
-
