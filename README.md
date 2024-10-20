@@ -4,9 +4,13 @@
 
 目前仅支持两家，因为我只有两家的片子，如果需要支持其它网站请见[开发](#开发)。
 
-[[TOC]]
+* [安装](#安装)
+* [支持的站点](#支持的站点)
+  * [qr.szjudianyun.com](#qrszjudianyuncom)
+  * [medicalimagecloud.com](#medicalimagecloudcom)
+* [开发](#开发)
 
-## 用法
+## 安装
 
 请先确保安装了 Python >= 12，然后安装依赖：
 
@@ -41,4 +45,4 @@ python downloader.py <url> <password> [--j2k]
 
 ## 开发
 
-由于爬虫无法只靠本机调试，如有问题请提 Issue 或 Pull Request，并附带报告的地址和密码（如果有），本人承诺不会将报告的信息用于开发本项目之外的目的。
+由于爬虫无法只靠本机调试，如有问题请提 Issue 或 Pull Request，并附带报告的地址和密码（如果有），报告不会被用于开发本项目之外的目的。
