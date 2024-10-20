@@ -112,7 +112,7 @@ async def run(viewer_url, password, *args):
 					continue
 				dir_ = TEMP_DIR / name
 				dir_.mkdir()
-				(dir_ / "tags.json").write_bytes(tags)
+				dir_.joinpath("tags.json").write_bytes(tags)
 
 			for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
 				viewer_url = image_service.format(info['studyId'], info['imageId'])
@@ -120,8 +120,8 @@ async def run(viewer_url, password, *args):
 					metadata = response.headers["X-ImageFrame"]
 					pixels = await response.read()
 
-					(dir_ / f"{i}.json").write_text(metadata)
-					(dir_ / f"{i}.slice").write_bytes(pixels)
+					dir_.joinpath(f"{i}.json").write_text(metadata)
+					dir_.joinpath(f"{i}.slice").write_bytes(pixels)
 
 				# 每一分钟要刷新一下 CAC_AUTH 令牌
 				if datetime.now() - login_time >= _REFRESH_CAC:

@@ -15,7 +15,7 @@ from yarl import URL
 # 常量，是一堆 DICOM 的 TAG ID，由 b1u2d3d4h5a 分隔。
 tag = "0x00100010b1u2d3d4h5a0x00101001b1u2d3d4h5a0x00100020b1u2d3d4h5a0x00100030b1u2d3d4h5a0x00100040b1u2d3d4h5a0x00101010b1u2d3d4h5a0x00080020b1u2d3d4h5a0x00080030b1u2d3d4h5a0x00180015b1u2d3d4h5a0x00180050b1u2d3d4h5a0x00180088b1u2d3d4h5a0x00080080b1u2d3d4h5a0x00181100b1u2d3d4h5a0x00280030b1u2d3d4h5a0x00080060b1u2d3d4h5a0x00200032b1u2d3d4h5a0x00200037b1u2d3d4h5a0x00280030b1u2d3d4h5a0x00280010b1u2d3d4h5a0x00280011b1u2d3d4h5a0x00080008b1u2d3d4h5a0x00200013b1u2d3d4h5a0x0008103Eb1u2d3d4h5a0x00181030b1u2d3d4h5a0x00080070b1u2d3d4h5a0x00200062b1u2d3d4h5a0x00185101";
 
-# 这网站看上去是个小作坊外包，应该不会有更多域名了。
+# 什么傻逼 qinniao，不会是北大青鸟吧？看上去是个小作坊外包，应该不会有更多域名了。
 base = "http://qinniaofu.coolingesaving.com:63001"
 
 
@@ -33,7 +33,8 @@ async def _request_dcm(ws, hospital_id, study, series, instance):
 		ww="",
 		wl="",
 		series=series,
-		series_in=str(instance))
+		series_in=str(instance)
+	)
 
 	# 451 开头的回复消息，没什么用。
 	await anext(ws)
@@ -53,16 +54,17 @@ async def run(url):
 	out_dir = Path(f"download/{hospital_id}-{study}")
 
 	async with aiohttp.ClientSession(base, raise_for_status=True) as client:
-		#  什么傻逼 qinniao，不会是北大青鸟吧？
 		async with client.get(f"/socket.io/?EIO=3&transport=polling&t={t}") as response:
 			text = await response.text()
 			text = text[text.index("{"): text.rindex("}") + 1]
 			sid = json.loads(text)["sid"]
 
+		# aiohttp 不要求使用 ws: 协议，默认的 http: 也行。
 		async with client.ws_connect(f"/socket.io/?EIO=3&transport=websocket&sid={sid}") as ws:
 			await ws.send_str("2probe")
 			await anext(ws)
 			await ws.send_str("5")
+
 			await _send_message(ws, 42, type="saveC", hospital_id=hospital_id, study=study, password=password)
 			message = await anext(ws)
 			info = json.loads(message.data[2:])[1]
