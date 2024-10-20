@@ -54,10 +54,10 @@ async def get_viewer_url(share_url, password):
 async def run(viewer_url, password, *args):
 	viewer_url = await get_viewer_url(viewer_url, password)
 
-	if "--j2k" in args:
-		image_service = "/imageservice/api/image/j2k/{}/{}/0/3"
-	else:
+	if "--raw" in args:
 		image_service = "/imageservice/api/image/dicom/{}/{}/0/0"
+	else:
+		image_service = "/imageservice/api/image/j2k/{}/{}/0/3"
 
 	async with aiohttp.ClientSession(headers=_HEADERS, raise_for_status=True) as client:
 		# 访问查影像的链接。
@@ -178,7 +178,7 @@ def _write_dicom(tags, pixels, file):
 	ds.file_meta.MediaStorageSOPClassUID = ds.SOPClassUID
 	ds.file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
 
-	if "--j2k" in sys.argv[1:]:
+	if pixels[16:23] == b"ftypjp2":
 		ds.file_meta.TransferSyntaxUID = JPEG2000Lossless
 		ds.PixelData = encapsulate([pixels])
 	else:

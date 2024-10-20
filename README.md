@@ -35,10 +35,10 @@ python downloader.py <url>
 海纳医信的云影像系统，URL 格式为`https://<xxx>.medicalimagecloud.com:<port?>/t/<32-chars-hex>`，还需要一个密码。
 
 ```
-python downloader.py <url> <password> [--j2k]
+python downloader.py <url> <password> [--raw]
 ```
 
-`--j2k` 如果指定该参数，则下载 JPEG2000 无损压缩的图像，没有则下载像素数据。
+`--raw` 如果指定该参数，则下载像素数据，默认下载 JPEG2000 无损压缩的图像。
 
 > [!WARNING]
 > 由于未能下载到标签的类型信息，所有私有标签将保存为`LO`类型。
