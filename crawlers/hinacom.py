@@ -80,7 +80,6 @@ async def run(viewer_url, password, *args):
 			exam_uid = matches[2][1]
 			cache_key = matches[3][1]
 
-		login_time = datetime.now()
 		params = {
 			"studyId": top_study_id,
 			"accessionNumber": accession_number,
@@ -98,35 +97,41 @@ async def run(viewer_url, password, *args):
 			file.write_text(json.dumps(image_set))
 
 		for series in image_set["displaySets"]:
-			name, images = series["description"].rstrip(), series["images"]
+			await _download_series(client, series, image_service, cache_key)
 
-			params = {
-				"studyId": images[0]["studyId"],
-				"imageId": images[0]["imageId"],
-				"frame": "0",
-				"storageNodes": "",
-			}
-			async with client.get("/ImageViewer/GetImageDicomTags", params=params) as response:
-				tags = await response.read()
-				if tags == b"[]":  # 跳过非 DCM 图片
-					continue
-				dir_ = TEMP_DIR / name
+
+async def _download_series(client, series, image_service, ck):
+	name, images = series["description"].rstrip(), series["images"]
+	login_time = datetime.now()
+	dir_ = TEMP_DIR / name
+
+	for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
+		study_id, image_id = info['studyId'], info['imageId']
+
+		# 图片响应头包含的标签不够，必须每个都请求 GetImageDicomTags。
+		params = {
+			"studyId": study_id,
+			"imageId": image_id,
+			"frame": "0",
+			"storageNodes": "",
+		}
+		async with client.get("/ImageViewer/GetImageDicomTags", params=params) as response:
+			tags = await response.read()
+			if tags == b"[]":  # 患者方案不知道是啥，没有标签，不下载了。
+				return
+			if i == 0:
 				dir_.mkdir()
-				dir_.joinpath("tags.json").write_bytes(tags)
+			dir_.joinpath(f"{i}.json").write_bytes(tags)
 
-			for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
-				viewer_url = image_service.format(info['studyId'], info['imageId'])
-				async with client.get(viewer_url, params={"ck": cache_key}) as response:
-					metadata = response.headers["X-ImageFrame"]
-					pixels = await response.read()
+		image_url = image_service.format(study_id, image_id)
+		async with client.get(image_url, params={"ck": ck}) as response:
+			pixels = await response.read()
+			dir_.joinpath(f"{i}.slice").write_bytes(pixels)
 
-					dir_.joinpath(f"{i}.json").write_text(metadata)
-					dir_.joinpath(f"{i}.slice").write_bytes(pixels)
-
-				# 每一分钟要刷新一下 CAC_AUTH 令牌
-				if datetime.now() - login_time >= _REFRESH_CAC:
-					(await client.get("/ImageViewer/renewcacauth")).close()
-					login_time = datetime.now()
+		# 每一分钟要刷新一下 CAC_AUTH 令牌
+		if datetime.now() - login_time >= _REFRESH_CAC:
+			(await client.get("/ImageViewer/renewcacauth")).close()
+			login_time = datetime.now()
 
 
 def _cast_value_type(value: str, vr: str):
@@ -152,7 +157,7 @@ def _cast_value_type(value: str, vr: str):
 	return [cast_fn(x) for x in parts]
 
 
-def _write_dicom(metadata, pixels, tags, file):
+def _write_dicom(tags, pixels, file):
 	ds = Dataset()
 	ds.file_meta = FileMetaDataset()
 
@@ -170,45 +175,17 @@ def _write_dicom(metadata, pixels, tags, file):
 			group, element = item["tag"].split(",")
 			ds.add_new(Tag(group, element), "LO", item["value"])
 
-	# 大部分都是首字母变小写了，但并不是全部。
-	# rowCosines & columnCosines 已包含在 ImageOrientationPatient
-
-	ds.SamplesPerPixel = metadata["samplesPerPixel"]
-	ds.PhotometricInterpretation = metadata["photometricInterpretation"]
-	ds.RescaleIntercept = metadata["intercept"]
-	ds.RescaleSlope = metadata["slope"]
-	ds.WindowWidth = metadata["windowWidth"]
-	ds.WindowCenter = metadata["windowCenter"]
-	ds.SliceThickness = metadata["sliceThickness"]
-
-	ds.RepetitionTime = metadata["timeToRepetition"]
-	ds.EchoTime = metadata["timeToEcho"]
-	ds.EchoNumbers = metadata["echoNumbers"]
-	ds.EchoTrainLength = metadata["echoTrainLength"]
-
-	ds.InstanceNumber = metadata["instanceNumber"]
-	ds.SliceLocation = metadata["sliceLocation"]
-	ds.ImagePositionPatient = metadata["imagePosition"]
-
-	# 在标准中没找到毫米以外的单位，可否认为该值一定是 mm？
-	if metadata["pixelSpacingUnits"] != "mm":
-		raise NotImplementedError('PixelSpacing unit is not "mm"')
-
-	if ds.PixelRepresentation == 0:
-		ds.PixelPaddingValue = max(0, metadata["pixelPaddingValue"])
-	else:
-		ds.PixelPaddingValue = metadata["pixelPaddingValue"]
-
 	ds.file_meta.MediaStorageSOPClassUID = ds.SOPClassUID
 	ds.file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
 
-	if "--j2k" in sys.argv[3:]:
+	if "--j2k" in sys.argv[1:]:
 		ds.file_meta.TransferSyntaxUID = JPEG2000Lossless
 		ds.PixelData = encapsulate([pixels])
 	else:
 		ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
 		ds.PixelData = pixels
 
+	# print(str(ds))
 	ds.save_as(file, enforce_file_format=True)
 
 
@@ -225,13 +202,27 @@ def build_dicom_files():
 		out_dir = SAVE_DIR / series_dir.name
 		out_dir.mkdir(parents=True, exist_ok=True)
 
-		tags = json.loads(series_dir.joinpath("tags.json").read_text("utf8"))
 		for i in range(len(info["images"])):
+			tags = series_dir.joinpath(f"{i}.json").read_text("utf8")
 			pixels = series_dir.joinpath(f"{i}.slice").read_bytes()
-			meta = json.loads(series_dir.joinpath(f"{i}.json").read_text())
-			_write_dicom(meta, pixels, tags, out_dir / f"{i}.dcm")
+			_write_dicom(json.loads(tags), pixels, out_dir / f"{i}.dcm")
+
+
+def diff_tags(pivot, another, frame_attrs):
+	pivot = json.loads(Path(pivot).read_text("utf8"))
+	another = json.loads(Path(another).read_text("utf8"))
+	fa = json.loads(Path(frame_attrs).read_text("utf8"))
+
+	tag_map = {}
+	for item in pivot:
+		tag_map[item["tag"]] = item["value"]
+
+	for item in another:
+		if tag_map[item["tag"]] != item["value"]:
+			print(f"{item['tag']} {item['name']}: {item['value']}")
 
 
 if __name__ == '__main__':
 	# asyncio.run(run())
 	build_dicom_files()
+	# diff_tags(r"C:\Users\Kaciras\Desktop\a.json", r"C:\Users\Kaciras\Desktop\b.json")
