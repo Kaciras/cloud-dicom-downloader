@@ -15,6 +15,8 @@ from pydicom.uid import ExplicitVRLittleEndian, JPEG2000Lossless
 from pydicom.valuerep import VR, STR_VR, INT_VR, FLOAT_VR
 from tqdm import tqdm
 
+from crawlers._utils import pathify
+
 _HEADERS = {
 	"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 	"Accept-Language": "zh,zh-CN;q=0.7,en;q=0.3",
@@ -25,13 +27,6 @@ _LINK_VIEW = re.compile(r"/Study/ViewImage\?studyId=([\w-]+)")
 _LINK_ENTRY = re.compile(r"window\.location\.href = '([^']+)'")
 _TARGET_PATH = re.compile(r'var TARGET_PATH = "([^"]+)"')
 _VAR_RE = re.compile(r'var (STUDY_ID|ACCESSION_NUMBER|STUDY_EXAM_UID|LOAD_IMAGE_CACHE_KEY) = "([^"]+)"')
-
-illegal_path_chars = re.compile(r'[<>:"/\\?*|]+\s*')
-
-
-def pathify(text: str):
-	return illegal_path_chars.sub("_", text.strip())
-
 
 async def get_viewer_url(share_url, password):
 	print(f"下载海纳医信 DICOM，报告 ID：{share_url.split('/')[-1]}，密码：{password}")
