@@ -1,10 +1,13 @@
+import asyncio
 import json
 import re
 import sys
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 import aiohttp
+from aiohttp import ClientSession
 from pydicom.datadict import DicomDictionary
 from pydicom.dataset import Dataset, FileMetaDataset
 from pydicom.encaps import encapsulate
@@ -51,87 +54,122 @@ async def get_viewer_url(share_url, password):
 			return origin + _LINK_VIEW.search(html).group(0)
 
 
-async def run(viewer_url, password, *args):
-	viewer_url = await get_viewer_url(viewer_url, password)
+async def create_downloader(viewer_url):
+	client = aiohttp.ClientSession(headers=_HEADERS, raise_for_status=True)
 
-	if "--raw" in args:
-		image_service = "/imageservice/api/image/dicom/{}/{}/0/0"
-	else:
-		image_service = "/imageservice/api/image/j2k/{}/{}/0/3"
+	# 访问查影像的链接。
+	async with client.get(viewer_url) as response:
+		html2 = await response.text()
+		matches = _LINK_ENTRY.search(html2)
 
-	async with aiohttp.ClientSession(headers=_HEADERS, raise_for_status=True) as client:
-		# 访问查影像的链接。
-		async with client.get(viewer_url) as response:
-			html2 = await response.text()
-			matches = _LINK_ENTRY.search(html2)
+	# 中间不知道为什么又要跳转一次，端口还变了。
+	async with client.get(matches.group(1)) as response:
+		html3 = await response.text("utf-8")
+		client._base_url = response.real_url.origin()
+		matches = _TARGET_PATH.search(html3)
 
-		# 中间不知道为什么又要跳转一次，端口还变了。
-		async with client.get(matches.group(1)) as response:
-			html3 = await response.text("utf-8")
-			client._base_url = response.real_url.origin()
-			matches = _TARGET_PATH.search(html3)
+	# 查看器页，关键信息就写在 JS 里。
+	async with client.get(matches.group(1)) as response:
+		html4 = await response.text()
+		matches = _VAR_RE.findall(html4)
+		top_study_id = matches[0][1]
+		accession_number = matches[1][1]
+		exam_uid = matches[2][1]
+		cache_key = matches[3][1]
 
-		# 查看器页，关键信息就写在 JS 里。
-		async with client.get(matches.group(1)) as response:
-			html4 = await response.text()
-			matches = _VAR_RE.findall(html4)
-			top_study_id = matches[0][1]
-			accession_number = matches[1][1]
-			exam_uid = matches[2][1]
-			cache_key = matches[3][1]
+	params = {
+		"studyId": top_study_id,
+		"accessionNumber": accession_number,
+		"examuid": exam_uid,
+		"minThickness": "5"
+	}
+	async with client.get("/ImageViewer/GetImageSet", params=params) as response:
+		image_set = await response.json()
 
+	# file = TEMP_DIR / "DataSet.json"
+	# file.parent.mkdir(parents=True, exist_ok=True)
+	# file.write_text(json.dumps(image_set))
+
+	return _HinacomDownloader(client, cache_key, image_set)
+
+
+class _HinacomDownloader:
+	client: ClientSession
+	cache_key: str
+	dataset: Any
+
+	def __init__(self, client, cache_key, dataset):
+		self.client = client
+		self.cache_key = cache_key
+		self.dataset = dataset
+		self.refreshing = asyncio.create_task(self._refresh_cac())
+
+	async def __aenter__(self):
+		return self
+
+	def __aexit__(self, *ignore):
+		self.refreshing.cancel()
+		return self.client.close()
+
+	async def _refresh_cac(self):
+		"""每一分钟要刷新一下 CAC_AUTH 令牌，另外 PY 没有尾递归优化所以还是用循环"""
+		while True:
+			await asyncio.sleep(_REFRESH_CAC.total_seconds())
+			(await self.client.get("/ImageViewer/renewcacauth")).close()
+
+	async def get_tags(self, info):
+		api = "/ImageViewer/GetImageDicomTags"
 		params = {
-			"studyId": top_study_id,
-			"accessionNumber": accession_number,
-			"examuid": exam_uid,
-			"minThickness": "5"
-		}
-		async with client.get("/ImageViewer/GetImageSet", params=params) as response:
-			image_set = await response.json()
-			print(f'姓名：{image_set["patientName"]}')
-			print(f'检查：{image_set["studyDescription"]}')
-			print(f'日期：{image_set["studyDate"]}\n')
-
-			file = TEMP_DIR / "DataSet.json"
-			file.parent.mkdir(parents=True, exist_ok=True)
-			file.write_text(json.dumps(image_set))
-
-		for series in image_set["displaySets"]:
-			await _download_series(client, series, image_service, cache_key)
-
-
-async def _download_series(client, series, image_service, ck):
-	name, images = series["description"].rstrip(), series["images"]
-	login_time = datetime.now()
-	dir_ = TEMP_DIR / name
-
-	for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
-		study_id, image_id = info['studyId'], info['imageId']
-
-		# 图片响应头包含的标签不够，必须每个都请求 GetImageDicomTags。
-		params = {
-			"studyId": study_id,
-			"imageId": image_id,
+			"studyId": info['studyId'],
+			"imageId": info['imageId'],
 			"frame": "0",
 			"storageNodes": "",
 		}
-		async with client.get("/ImageViewer/GetImageDicomTags", params=params) as response:
-			tags = await response.read()
-			if tags == b"[]":  # 患者方案不知道是啥，没有标签，不下载了。
-				return
-			if i == 0:
-				dir_.mkdir()
-			dir_.joinpath(f"{i}.json").write_bytes(tags)
+		async with self.client.get(api, params=params) as response:
+			return await response.json()
 
-		image_url = image_service.format(study_id, image_id)
-		async with client.get(image_url, params={"ck": ck}) as response:
-			pixels = await response.read()
-			dir_.joinpath(f"{i}.slice").write_bytes(pixels)
+	async def get_image(self, info, raw: bool):
+		s, i, ck = info['studyId'], info['imageId'], self.cache_key
+		if raw:
+			api = f"/imageservice/api/image/dicom/{s}/{i}/0/0"
+		else:
+			api = f"/imageservice/api/image/j2k/{s}/{i}/0/3"
 
-		# 每一分钟要刷新一下 CAC_AUTH 令牌
-		if datetime.now() - login_time >= _REFRESH_CAC:
-			(await client.get("/ImageViewer/renewcacauth")).close()
-			login_time = datetime.now()
+		async with self.client.get(api, params={"ck": ck}) as response:
+			return await response.read()
+
+
+async def _download_series(downloader, series, is_raw):
+	"""
+	下载指定的序列，如果序列不包含任何 DCM 文件则跳过。
+	因为需要跳过多层循环，所以把这部分代码提到一个函数以便使用 return。
+	"""
+	name, images = series["description"].rstrip(), series["images"]
+	dir_ = TEMP_DIR / name
+
+	for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
+		# 图片响应头包含的标签不够，必须每个都请求 GetImageDicomTags。
+		tags = await downloader.get_tags(info)
+
+		if len(tags) == 0:
+			return
+
+		pixels = await downloader.get_image(info, is_raw)
+		dir_.mkdir(parents=True, exist_ok=True)
+		_write_dicom(tags, pixels, dir_ / f"{i}.dcm")
+
+
+async def run(report_url, password, *args):
+	viewer_url = await get_viewer_url(report_url, password)
+	is_raw = "--raw" in args
+
+	async with await create_downloader(viewer_url) as downloader:
+		print(f'姓名：{downloader.dataset["patientName"]}')
+		print(f'检查：{downloader.dataset["studyDescription"]}')
+		print(f'日期：{downloader.dataset["studyDate"]}\n')
+
+		for series in downloader.dataset["displaySets"]:
+			await _download_series(downloader, series, is_raw)
 
 
 def _cast_value_type(value: str, vr: str):
@@ -157,12 +195,12 @@ def _cast_value_type(value: str, vr: str):
 	return [cast_fn(x) for x in parts]
 
 
-def _write_dicom(tags, pixels, file):
+def _write_dicom(tag_list, image, filename):
 	ds = Dataset()
 	ds.file_meta = FileMetaDataset()
 
 	# 这里认为 tags 中除 metadata 外的都是 Series 共有的。
-	for item in tags:
+	for item in tag_list:
 		group, element = item["tag"].split(",")
 		id_ = (int(group, 16) << 16) | int(element, 16)
 		definition = DicomDictionary.get(id_)
@@ -178,15 +216,16 @@ def _write_dicom(tags, pixels, file):
 	ds.file_meta.MediaStorageSOPClassUID = ds.SOPClassUID
 	ds.file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
 
-	if pixels[16:23] == b"ftypjp2":
+	# 根据文件体积和头部自动判断类型。
+	px_size = (ds.BitsAllocated + 7) // 8 * ds.Rows * ds.Columns
+	if image[16:23] == b"ftypjp2" and len(image) != px_size:
+		ds.PixelData = encapsulate([image])
 		ds.file_meta.TransferSyntaxUID = JPEG2000Lossless
-		ds.PixelData = encapsulate([pixels])
 	else:
+		ds.PixelData = image
 		ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
-		ds.PixelData = pixels
 
-	# print(str(ds))
-	ds.save_as(file, enforce_file_format=True)
+	ds.save_as(filename, enforce_file_format=True)
 
 
 def build_dicom_files():
@@ -225,4 +264,4 @@ def diff_tags(pivot, another, frame_attrs):
 if __name__ == '__main__':
 	# asyncio.run(run())
 	build_dicom_files()
-	# diff_tags(r"C:\Users\Kaciras\Desktop\a.json", r"C:\Users\Kaciras\Desktop\b.json")
+# diff_tags(r"C:\Users\Kaciras\Desktop\a.json", r"C:\Users\Kaciras\Desktop\b.json")
