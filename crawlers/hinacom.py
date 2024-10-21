@@ -2,7 +2,6 @@ import asyncio
 import json
 import re
 import sys
-from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -26,8 +25,6 @@ _LINK_VIEW = re.compile(r"/Study/ViewImage\?studyId=([\w-]+)")
 _LINK_ENTRY = re.compile(r"window\.location\.href = '([^']+)'")
 _TARGET_PATH = re.compile(r'var TARGET_PATH = "([^"]+)"')
 _VAR_RE = re.compile(r'var (STUDY_ID|ACCESSION_NUMBER|STUDY_EXAM_UID|LOAD_IMAGE_CACHE_KEY) = "([^"]+)"')
-
-_REFRESH_CAC = timedelta(minutes=1)
 
 
 async def get_viewer_url(share_url, password):
@@ -85,7 +82,7 @@ async def create_downloader(viewer_url):
 class _HinacomDownloader:
 	client: ClientSession
 	cache_key: str
-	dataset: Any
+	dataset: dict[str, Any]
 
 	def __init__(self, client, cache_key, dataset):
 		self.client = client
@@ -103,7 +100,7 @@ class _HinacomDownloader:
 	async def _refresh_cac(self):
 		"""每一分钟要刷新一下 CAC_AUTH 令牌，另外 PY 没有尾递归优化所以还是用循环"""
 		while True:
-			await asyncio.sleep(_REFRESH_CAC.total_seconds())
+			await asyncio.sleep(60)
 			(await self.client.get("/ImageViewer/renewcacauth")).close()
 
 	async def get_tags(self, info):
@@ -132,35 +129,7 @@ def _get_save_dir(image_set):
 	patient = image_set["patientName"]
 	exam = image_set["studyDescription"]
 	date = image_set["studyDate"]
-
-	print(f'姓名：{patient}')
-	print(f'检查：{exam}')
-	print(f'日期：{date}\n')
-
 	return Path(f"download/{patient}-{exam}-{date}")
-
-
-async def run(report_url, password, *args):
-	viewer_url = await get_viewer_url(report_url, password)
-	is_raw = "--raw" in args
-
-	async with await create_downloader(viewer_url) as downloader:
-		save_to = _get_save_dir(downloader.dataset)
-
-		for series in downloader.dataset["displaySets"]:
-			name, images = series["description"].rstrip(), series["images"]
-			dir_ = save_to / name
-
-			for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
-				# 图片响应头包含的标签不够，必须每个都请求 GetImageDicomTags。
-				tags = await downloader.get_tags(info)
-
-				if len(tags) == 0:
-					continue
-
-				pixels, _ = await downloader.get_image(info, is_raw)
-				dir_.mkdir(parents=True, exist_ok=True)
-				_write_dicom(tags, pixels, dir_ / f"{i}.dcm")
 
 
 def _cast_value_type(value: str, vr: str):
@@ -190,19 +159,17 @@ def _write_dicom(tag_list, image, filename):
 	ds = Dataset()
 	ds.file_meta = FileMetaDataset()
 
-	# 这里认为 tags 中除 metadata 外的都是 Series 共有的。
+	# GetImageDicomTags 的响应不含 VR，故私有标签只能假设为 LO 类型。
 	for item in tag_list:
-		group, element = item["tag"].split(",")
-		id_ = (int(group, 16) << 16) | int(element, 16)
-		definition = DicomDictionary.get(id_)
+		tag = Tag(item["tag"].split(",", 2))
+		definition = DicomDictionary.get(tag)
 
-		# /GetImageDicomTags 的响应不含 VR，故私有标签只能假设为 LO 类型。
 		if definition:
 			vr, key = definition[0], definition[4]
 			setattr(ds, key, _cast_value_type(item["value"], vr))
 		else:
-			group, element = item["tag"].split(",")
-			ds.add_new(Tag(group, element), "LO", item["value"])
+			# 正好 PrivateCreator 出现在它的标签之前，按顺序添加即可。
+			ds.add_new(tag, "LO", item["value"])
 
 	ds.file_meta.MediaStorageSOPClassUID = ds.SOPClassUID
 	ds.file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
@@ -217,6 +184,31 @@ def _write_dicom(tag_list, image, filename):
 		ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
 
 	ds.save_as(filename, enforce_file_format=True)
+
+
+async def run(report_url, password, *args):
+	viewer_url = await get_viewer_url(report_url, password)
+	is_raw = "--raw" in args
+
+	async with await create_downloader(viewer_url) as downloader:
+		save_to = _get_save_dir(downloader.dataset)
+		print(f'保存到: {save_to}')
+
+		for series in downloader.dataset["displaySets"]:
+			name, images = series["description"].rstrip(), series["images"]
+			dir_ = save_to / name
+
+			for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
+				# 图片响应头包含的标签不够，必须每个都请求 GetImageDicomTags。
+				tags = await downloader.get_tags(info)
+
+				# 没有标签的视为非 DCM 文件，跳过。
+				if len(tags) == 0:
+					continue
+
+				pixels, _ = await downloader.get_image(info, is_raw)
+				dir_.mkdir(parents=True, exist_ok=True)
+				_write_dicom(tags, pixels, dir_ / f"{i}.dcm")
 
 
 # ============================== 下面仅调试用 ==============================
@@ -267,10 +259,9 @@ def build_dicom_files():
 			_write_dicom(json.loads(tags), pixels, out_dir / f"{i}.dcm")
 
 
-def diff_tags(pivot, another, frame_attrs):
+def diff_tags(pivot, another):
 	pivot = json.loads(Path(pivot).read_text("utf8"))
 	another = json.loads(Path(another).read_text("utf8"))
-	fa = json.loads(Path(frame_attrs).read_text("utf8"))
 
 	tag_map = {}
 	for item in pivot:
@@ -283,5 +274,5 @@ def diff_tags(pivot, another, frame_attrs):
 
 if __name__ == '__main__':
 	# asyncio.run(download_debug(*sys.argv[1:]))
+	# diff_tags(r"C:\Users\Kaciras\Desktop\a.json", r"C:\Users\Kaciras\Desktop\b.json")
 	build_dicom_files()
-# diff_tags(r"C:\Users\Kaciras\Desktop\a.json", r"C:\Users\Kaciras\Desktop\b.json")

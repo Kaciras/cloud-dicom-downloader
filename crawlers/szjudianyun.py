@@ -70,7 +70,7 @@ async def run(url):
 			info = json.loads(message.data[2:])[1]
 			series_list, sizes = info["series"], info["series_dicom_number"]
 
-			print(f"保存到 {out_dir}，共 {len(series_list)} 张序列")
+			print(f"保存到: {out_dir}，共 {len(series_list)} 张序列")
 			for sid in series_list:
 				if sid.startswith("dfyfilm"):  # 最后会有一张非 DICOM 图片，跳过。
 					continue
