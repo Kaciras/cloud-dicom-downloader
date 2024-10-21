@@ -26,6 +26,12 @@ _LINK_ENTRY = re.compile(r"window\.location\.href = '([^']+)'")
 _TARGET_PATH = re.compile(r'var TARGET_PATH = "([^"]+)"')
 _VAR_RE = re.compile(r'var (STUDY_ID|ACCESSION_NUMBER|STUDY_EXAM_UID|LOAD_IMAGE_CACHE_KEY) = "([^"]+)"')
 
+illegal_path_chars = re.compile(r'[<>:"/\\?*|]+\s*')
+
+
+def pathify(text: str):
+	return illegal_path_chars.sub("_", text.strip())
+
 
 async def get_viewer_url(share_url, password):
 	print(f"下载海纳医信 DICOM，报告 ID：{share_url.split('/')[-1]}，密码：{password}")
@@ -195,7 +201,7 @@ async def run(report_url, password, *args):
 		print(f'保存到: {save_to}')
 
 		for series in downloader.dataset["displaySets"]:
-			name, images = series["description"].rstrip(), series["images"]
+			name, images = pathify(series["description"]), series["images"]
 			dir_ = save_to / name
 
 			for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
@@ -248,7 +254,7 @@ def build_dicom_files():
 		if series_dir.is_file():
 			continue
 		info = name_map[series_dir.name]
-		out_dir = save_dir / series_dir.name
+		out_dir = save_dir / pathify(series_dir.name)
 		out_dir.mkdir(parents=True, exist_ok=True)
 
 		for i in range(len(info["images"])):
