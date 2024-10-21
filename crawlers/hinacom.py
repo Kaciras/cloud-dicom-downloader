@@ -16,13 +16,6 @@ from pydicom.uid import ExplicitVRLittleEndian, JPEG2000Lossless
 from pydicom.valuerep import VR, STR_VR, INT_VR, FLOAT_VR
 from tqdm import tqdm
 
-# 保存位置
-SAVE_DIR = Path("download/dicom")
-# 保存中间输出，仅调试用
-TEMP_DIR = Path("download/dicom_temp")
-
-# ============================================================
-
 _HEADERS = {
 	"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 	"Accept-Language": "zh,zh-CN;q=0.7,en;q=0.3",
@@ -86,10 +79,6 @@ async def create_downloader(viewer_url):
 	async with client.get("/ImageViewer/GetImageSet", params=params) as response:
 		image_set = await response.json()
 
-	# file = TEMP_DIR / "DataSet.json"
-	# file.parent.mkdir(parents=True, exist_ok=True)
-	# file.write_text(json.dumps(image_set))
-
 	return _HinacomDownloader(client, cache_key, image_set)
 
 
@@ -136,27 +125,19 @@ class _HinacomDownloader:
 			api = f"/imageservice/api/image/j2k/{s}/{i}/0/3"
 
 		async with self.client.get(api, params={"ck": ck}) as response:
-			return await response.read()
+			return await response.read(), response.headers["X-ImageFrame"]
 
 
-async def _download_series(downloader, series, is_raw):
-	"""
-	下载指定的序列，如果序列不包含任何 DCM 文件则跳过。
-	因为需要跳过多层循环，所以把这部分代码提到一个函数以便使用 return。
-	"""
-	name, images = series["description"].rstrip(), series["images"]
-	dir_ = TEMP_DIR / name
+def _get_save_dir(image_set):
+	patient = image_set["patientName"]
+	exam = image_set["studyDescription"]
+	date = image_set["studyDate"]
 
-	for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
-		# 图片响应头包含的标签不够，必须每个都请求 GetImageDicomTags。
-		tags = await downloader.get_tags(info)
+	print(f'姓名：{patient}')
+	print(f'检查：{exam}')
+	print(f'日期：{date}\n')
 
-		if len(tags) == 0:
-			return
-
-		pixels = await downloader.get_image(info, is_raw)
-		dir_.mkdir(parents=True, exist_ok=True)
-		_write_dicom(tags, pixels, dir_ / f"{i}.dcm")
+	return Path(f"download/{patient}-{exam}-{date}")
 
 
 async def run(report_url, password, *args):
@@ -164,12 +145,22 @@ async def run(report_url, password, *args):
 	is_raw = "--raw" in args
 
 	async with await create_downloader(viewer_url) as downloader:
-		print(f'姓名：{downloader.dataset["patientName"]}')
-		print(f'检查：{downloader.dataset["studyDescription"]}')
-		print(f'日期：{downloader.dataset["studyDate"]}\n')
+		save_to = _get_save_dir(downloader.dataset)
 
 		for series in downloader.dataset["displaySets"]:
-			await _download_series(downloader, series, is_raw)
+			name, images = series["description"].rstrip(), series["images"]
+			dir_ = save_to / name
+
+			for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
+				# 图片响应头包含的标签不够，必须每个都请求 GetImageDicomTags。
+				tags = await downloader.get_tags(info)
+
+				if len(tags) == 0:
+					continue
+
+				pixels, _ = await downloader.get_image(info, is_raw)
+				dir_.mkdir(parents=True, exist_ok=True)
+				_write_dicom(tags, pixels, dir_ / f"{i}.dcm")
 
 
 def _cast_value_type(value: str, vr: str):
@@ -228,21 +219,50 @@ def _write_dicom(tag_list, image, filename):
 	ds.save_as(filename, enforce_file_format=True)
 
 
+# ============================== 下面仅调试用 ==============================
+
+TEMP_DIR = Path("download/dicom_temp")
+
+
+async def download_debug(report_url, password, *args):
+	viewer_url = await get_viewer_url(report_url, password)
+	is_raw = "--raw" in args
+	TEMP_DIR.mkdir(parents=True, exist_ok=True)
+
+	async with await create_downloader(viewer_url) as downloader:
+		TEMP_DIR.joinpath("ImageSet.json").write_text(json.dumps(downloader.dataset))
+
+		for series in downloader.dataset["displaySets"]:
+			name, images = series["description"].rstrip(), series["images"]
+			dir_ = TEMP_DIR / name
+			dir_.mkdir(exist_ok=True)
+
+			for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
+				tags = await downloader.get_tags(info)
+				pixels, attrs = await downloader.get_image(info, is_raw)
+				dir_.joinpath(f"{i}-tags.json").write_text(json.dumps(tags))
+				dir_.joinpath(f"{i}.json").write_text(attrs)
+				dir_.joinpath(f"{i}.slice").write_bytes(pixels)
+
+
 def build_dicom_files():
-	"""调试用，读取所有临时文件夹的数据，生成跟正常下载一样的 DCM 文件"""
-	with TEMP_DIR.joinpath("DataSet.json").open() as fp:
-		studies = json.load(fp)
-		name_map = {s["description"].rstrip(): s for s in studies["displaySets"]}
+	"""读取所有临时文件夹的数据，生成跟正常下载一样的 DCM 文件"""
+	with TEMP_DIR.joinpath("ImageSet.json").open() as fp:
+		image_set = json.load(fp)
+		name_map = {s["description"].rstrip(): s for s in image_set["displaySets"]}
+		save_dir = _get_save_dir(image_set)
 
 	for series_dir in TEMP_DIR.iterdir():
 		if series_dir.is_file():
 			continue
 		info = name_map[series_dir.name]
-		out_dir = SAVE_DIR / series_dir.name
+		out_dir = save_dir / series_dir.name
 		out_dir.mkdir(parents=True, exist_ok=True)
 
 		for i in range(len(info["images"])):
-			tags = series_dir.joinpath(f"{i}.json").read_text("utf8")
+			tags = series_dir.joinpath(f"{i}-tags.json").read_text("utf8")
+			if tags == "[]":
+				continue
 			pixels = series_dir.joinpath(f"{i}.slice").read_bytes()
 			_write_dicom(json.loads(tags), pixels, out_dir / f"{i}.dcm")
 
@@ -262,6 +282,6 @@ def diff_tags(pivot, another, frame_attrs):
 
 
 if __name__ == '__main__':
-	# asyncio.run(run())
+	# asyncio.run(download_debug(*sys.argv[1:]))
 	build_dicom_files()
 # diff_tags(r"C:\Users\Kaciras\Desktop\a.json", r"C:\Users\Kaciras\Desktop\b.json")
