@@ -32,7 +32,7 @@ python downloader.py <url>
 
 ### medicalimagecloud.com
 
-海纳医信的云影像系统，URL 格式为`https://<xxx>.medicalimagecloud.com:<port?>/t/<32-chars-hex>`，还需要一个密码。
+海纳医信的云影像系统，URL 格式为`https://*.medicalimagecloud.com:<port?>/t/<32-chars-hex>`，还需要一个密码。
 
 ```
 python downloader.py <url> <password> [--raw]

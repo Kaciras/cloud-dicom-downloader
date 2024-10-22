@@ -14,6 +14,9 @@ _HEADERS = {
 
 # noinspection PyTypeChecker
 async def _dump_response_check(response: aiohttp.ClientResponse):
+	"""
+	检查响应码，如果大于等于 400 则转储该响应的数据到一个压缩包，并抛出异常。
+	"""
 	if response.ok:
 		return
 
@@ -42,8 +45,13 @@ async def _dump_response_check(response: aiohttp.ClientResponse):
 
 
 def new_http_client(*args, **kwargs):
+	headers = kwargs.get("headers")
 	kwargs.setdefault("raise_for_status", _dump_response_check)
-	kwargs.setdefault("headers", _HEADERS)
+	if headers:
+		kwargs["headers"] = _HEADERS | headers
+	else:
+		kwargs["headers"] = _HEADERS
+
 	return aiohttp.ClientSession(*args, **kwargs)
 
 

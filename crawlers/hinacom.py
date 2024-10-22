@@ -1,3 +1,7 @@
+"""
+下载海纳医信 miShare（*.medicalimagecloud.com） 上面的云影像，爬虫流程见：
+https://blog.kaciras.com/article/45/download-dicom-files-from-hinacom-cloud-viewer
+"""
 import asyncio
 import json
 import re
