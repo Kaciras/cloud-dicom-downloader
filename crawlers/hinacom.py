@@ -28,14 +28,17 @@ async def get_viewer_url(share_url, password):
 		# 先是入口页面，它会重定向到登录页并设置一个 Cookie
 		async with client.get(share_url) as response:
 			url = response.real_url
-			origin = str(url.origin())
 			uuid = url.path.split("/")[-1]
 
 		# 登录报告页，成功后又会拿到 Cookies，从中找查看影像的链接。
 		_headers = {"content-type": "application/x-www-form-urlencoded"}
 		async with client.post(url, data=f"id={uuid}&Password={password}", headers=_headers) as response:
 			html = await response.text()
-			return origin + _LINK_VIEW.search(html).group(0)
+			match = _LINK_VIEW.search(html)
+			if not match:
+				raise Exception("链接不存在，可能被取消分享了。")
+
+			return str(url.origin()) + match.group(0)
 
 
 async def create_downloader(viewer_url):
