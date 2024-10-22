@@ -4,6 +4,8 @@ from io import TextIOWrapper
 from zipfile import ZipFile
 
 import aiohttp
+from pydicom.tag import Tag
+from pydicom.valuerep import VR, STR_VR, INT_VR, FLOAT_VR
 
 _HEADERS = {
 	"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -76,3 +78,26 @@ def pathify(text: str):
 	这里就把非法字符替换为 Unicode 的宽字符，虽然有点别扭但并不损失易读性。
 	"""
 	return _illegal_path_chars.sub(_to_full_width, text.strip())
+
+
+def parse_dcm_value(value: str, vr: str):
+	"""
+	在 pydicom 里没找到自动转换的功能，得自己处理下类型。
+	https://stackoverflow.com/a/77661160/7065321
+	"""
+	if vr == VR.AT:
+		return Tag(value)
+
+	if vr in STR_VR:
+		cast_fn = str
+	elif vr in INT_VR or vr == "US or SS":
+		cast_fn = int
+	elif vr in FLOAT_VR:
+		cast_fn = float
+	else:
+		raise NotImplementedError("Unsupported VR: " + vr)
+
+	parts = value.split("\\")
+	if len(parts) == 1:
+		return cast_fn(value)
+	return [cast_fn(x) for x in parts]

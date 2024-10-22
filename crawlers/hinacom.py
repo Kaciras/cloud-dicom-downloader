@@ -15,15 +15,15 @@ from pydicom.dataset import Dataset, FileMetaDataset
 from pydicom.encaps import encapsulate
 from pydicom.tag import Tag
 from pydicom.uid import ExplicitVRLittleEndian, JPEG2000Lossless
-from pydicom.valuerep import VR, STR_VR, INT_VR, FLOAT_VR
 from tqdm import tqdm
 
-from crawlers._utils import pathify, new_http_client
+from crawlers._utils import pathify, new_http_client, parse_dcm_value
 
 _LINK_VIEW = re.compile(r"/Study/ViewImage\?studyId=([\w-]+)")
 _LINK_ENTRY = re.compile(r"window\.location\.href = '([^']+)'")
 _TARGET_PATH = re.compile(r'var TARGET_PATH = "([^"]+)"')
 _VAR_RE = re.compile(r'var (STUDY_ID|ACCESSION_NUMBER|STUDY_EXAM_UID|LOAD_IMAGE_CACHE_KEY) = "([^"]+)"')
+
 
 async def get_viewer_url(share_url, password):
 	print(f"下载海纳医信 DICOM，报告 ID：{share_url.split('/')[-1]}，密码：{password}")
@@ -133,29 +133,6 @@ def _get_save_dir(image_set):
 	return Path(f"download/{patient}-{exam}-{date}")
 
 
-def _cast_value_type(value: str, vr: str):
-	"""
-	在 pydicom 里没找到自动转换的功能，得自己处理下类型。
-	https://stackoverflow.com/a/77661160/7065321
-	"""
-	if vr == VR.AT:
-		return Tag(value)
-
-	if vr in STR_VR:
-		cast_fn = str
-	elif vr in INT_VR or vr == "US or SS":
-		cast_fn = int
-	elif vr in FLOAT_VR:
-		cast_fn = float
-	else:
-		raise NotImplementedError("Unsupported VR: " + vr)
-
-	parts = value.split("\\")
-	if len(parts) == 1:
-		return cast_fn(value)
-	return [cast_fn(x) for x in parts]
-
-
 def _write_dicom(tag_list, image, filename):
 	ds = Dataset()
 	ds.file_meta = FileMetaDataset()
@@ -167,7 +144,7 @@ def _write_dicom(tag_list, image, filename):
 
 		if definition:
 			vr, key = definition[0], definition[4]
-			setattr(ds, key, _cast_value_type(item["value"], vr))
+			setattr(ds, key, parse_dcm_value(item["value"], vr))
 		else:
 			# 正好 PrivateCreator 出现在它的标签之前，按顺序添加即可。
 			ds.add_new(tag, "LO", item["value"])
