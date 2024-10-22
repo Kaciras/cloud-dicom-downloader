@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import aiohttp
 from aiohttp import ClientSession
 from pydicom.datadict import DicomDictionary
 from pydicom.dataset import Dataset, FileMetaDataset
@@ -15,13 +14,7 @@ from pydicom.uid import ExplicitVRLittleEndian, JPEG2000Lossless
 from pydicom.valuerep import VR, STR_VR, INT_VR, FLOAT_VR
 from tqdm import tqdm
 
-from crawlers._utils import pathify
-
-_HEADERS = {
-	"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-	"Accept-Language": "zh,zh-CN;q=0.7,en;q=0.3",
-	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0",
-}
+from crawlers._utils import pathify, new_http_client
 
 _LINK_VIEW = re.compile(r"/Study/ViewImage\?studyId=([\w-]+)")
 _LINK_ENTRY = re.compile(r"window\.location\.href = '([^']+)'")
@@ -31,7 +24,7 @@ _VAR_RE = re.compile(r'var (STUDY_ID|ACCESSION_NUMBER|STUDY_EXAM_UID|LOAD_IMAGE_
 async def get_viewer_url(share_url, password):
 	print(f"下载海纳医信 DICOM，报告 ID：{share_url.split('/')[-1]}，密码：{password}")
 
-	async with aiohttp.ClientSession(headers=_HEADERS, raise_for_status=True) as client:
+	async with new_http_client() as client:
 		# 先是入口页面，它会重定向到登录页并设置一个 Cookie
 		async with client.get(share_url) as response:
 			url = response.real_url
@@ -46,7 +39,7 @@ async def get_viewer_url(share_url, password):
 
 
 async def create_downloader(viewer_url):
-	client = aiohttp.ClientSession(headers=_HEADERS, raise_for_status=True)
+	client = new_http_client()
 
 	# 访问查影像的链接。
 	async with client.get(viewer_url) as response:

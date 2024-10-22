@@ -8,9 +8,10 @@ import string
 import sys
 from pathlib import Path
 
-import aiohttp
 from tqdm import tqdm
 from yarl import URL
+
+from crawlers._utils import new_http_client
 
 # 常量，是一堆 DICOM 的 TAG ID，由 b1u2d3d4h5a 分隔。
 tag = "0x00100010b1u2d3d4h5a0x00101001b1u2d3d4h5a0x00100020b1u2d3d4h5a0x00100030b1u2d3d4h5a0x00100040b1u2d3d4h5a0x00101010b1u2d3d4h5a0x00080020b1u2d3d4h5a0x00080030b1u2d3d4h5a0x00180015b1u2d3d4h5a0x00180050b1u2d3d4h5a0x00180088b1u2d3d4h5a0x00080080b1u2d3d4h5a0x00181100b1u2d3d4h5a0x00280030b1u2d3d4h5a0x00080060b1u2d3d4h5a0x00200032b1u2d3d4h5a0x00200037b1u2d3d4h5a0x00280030b1u2d3d4h5a0x00280010b1u2d3d4h5a0x00280011b1u2d3d4h5a0x00080008b1u2d3d4h5a0x00200013b1u2d3d4h5a0x0008103Eb1u2d3d4h5a0x00181030b1u2d3d4h5a0x00080070b1u2d3d4h5a0x00200062b1u2d3d4h5a0x00185101";
@@ -53,7 +54,7 @@ async def run(url):
 
 	out_dir = Path(f"download/{hospital_id}-{study}")
 
-	async with aiohttp.ClientSession(base, raise_for_status=True) as client:
+	async with new_http_client() as client:
 		async with client.get(f"/socket.io/?EIO=3&transport=polling&t={t}") as response:
 			text = await response.text()
 			text = text[text.index("{"): text.rindex("}") + 1]
