@@ -1,3 +1,4 @@
+import random
 import re
 import sys
 from io import TextIOWrapper
@@ -7,10 +8,13 @@ import aiohttp
 from pydicom.tag import Tag
 from pydicom.valuerep import VR, STR_VR, INT_VR, FLOAT_VR
 
+_UA_VER = random.randint(109, 131)
+
 _HEADERS = {
 	"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 	"Accept-Language": "zh,zh-CN;q=0.7,en;q=0.3",
-	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0",
+	"Upgrade-Insecure-Requests": "1",
+	"User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:{_UA_VER}.0) Gecko/20100101 Firefox/{_UA_VER}.0",
 }
 
 

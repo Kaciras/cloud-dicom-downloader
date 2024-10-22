@@ -127,9 +127,9 @@ class _HinacomDownloader:
 
 
 def _get_save_dir(image_set):
-	patient = image_set["patientName"]
-	exam = image_set["studyDescription"]
+	exam = pathify(image_set["studyDescription"])
 	date = image_set["studyDate"]
+	patient = image_set["patientName"]
 	return Path(f"download/{patient}-{exam}-{date}")
 
 
