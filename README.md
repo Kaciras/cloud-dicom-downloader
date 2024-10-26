@@ -12,7 +12,7 @@
 
 ## 安装
 
-请先确保安装了 Python >= 12，然后安装依赖：
+请先确保安装了 Python >= 13，然后安装依赖：
 
 ```
 pip install -r requirements.txt
@@ -24,7 +24,7 @@ pip install -r requirements.txt
 
 ### qr.szjudianyun.com
 
-不知道什么名字的系统，URL 格式为`http://qr.szjudianyun.com/<xxx>/?a=<hospital_id>&b=<study>&c=<password>`，可从报告单扫码得到。
+URL 格式为`http://qr.szjudianyun.com/<xxx>/?a=<hospital_id>&b=<study>&c=<password>`，可从报告单扫码得到。
 
 ```
 python downloader.py <url>
@@ -32,13 +32,13 @@ python downloader.py <url>
 
 ### medicalimagecloud.com
 
-海纳医信的云影像系统，URL 格式为`https://*.medicalimagecloud.com:<port?>/t/<32-chars-hex>`，还需要一个密码。
+海纳医信的云影像，URL 格式为`https://*.medicalimagecloud.com:<port?>/t/<32-chars-hex>`，还需要一个密码。
 
 ```
 python downloader.py <url> <password> [--raw]
 ```
 
-`--raw` 如果指定该参数，则下载像素数据，默认下载 JPEG2000 无损压缩的图像。
+`--raw` 如果指定该参数，则下载未压缩的像素，默认下载 JPEG2000 无损压缩的图像。
 
 > [!WARNING]
 > 由于未能下载到标签的类型信息，所有私有标签将保存为`LO`类型。

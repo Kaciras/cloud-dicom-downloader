@@ -6,7 +6,7 @@ from yarl import URL
 from crawlers import szjudianyun, hinacom
 
 
-def main():
+async def main():
 	host = URL(sys.argv[1]).host
 
 	if host.endswith(".medicalimagecloud.com"):
@@ -16,7 +16,7 @@ def main():
 	else:
 		return print("不支持的网站，详情见 README.md")
 
-	return module_.run(*sys.argv[1:])
+	await module_.run(*sys.argv[1:])
 
 
 if __name__ == "__main__":
