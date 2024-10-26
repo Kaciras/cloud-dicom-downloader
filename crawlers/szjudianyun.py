@@ -53,7 +53,9 @@ async def _get_dcm(ws, hospital_id, study, series, instance):
 async def download_study(ws: ClientWebSocketResponse, info):
 	hospital_id, study = info["hosipital"].split(separator, 2)
 	series_list, sizes = info["series"], info["series_dicom_number"]
+
 	save_dir = Path(f"download/{hospital_id}-{study}")
+	print(f"下载 szjudianyun 的 DICOM 到 {save_dir}")
 
 	for sid in series_list:
 		if sid.startswith("dfyfilm"):  # 最后会有一张非 DICOM 图片。
