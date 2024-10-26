@@ -6,25 +6,31 @@ import json
 import random
 import string
 import sys
+from io import BytesIO
 from pathlib import Path
+from typing import Optional
 
-from tqdm import tqdm
+from aiohttp import ClientWebSocketResponse
+from pydicom import dcmread
+from tqdm import trange
 from yarl import URL
 
-from crawlers._utils import new_http_client
+from crawlers._utils import new_http_client, pathify
+
+separator = "b1u2d3d4h5a"
 
 # 常量，是一堆 DICOM 的 TAG ID，由 b1u2d3d4h5a 分隔。
 tag = "0x00100010b1u2d3d4h5a0x00101001b1u2d3d4h5a0x00100020b1u2d3d4h5a0x00100030b1u2d3d4h5a0x00100040b1u2d3d4h5a0x00101010b1u2d3d4h5a0x00080020b1u2d3d4h5a0x00080030b1u2d3d4h5a0x00180015b1u2d3d4h5a0x00180050b1u2d3d4h5a0x00180088b1u2d3d4h5a0x00080080b1u2d3d4h5a0x00181100b1u2d3d4h5a0x00280030b1u2d3d4h5a0x00080060b1u2d3d4h5a0x00200032b1u2d3d4h5a0x00200037b1u2d3d4h5a0x00280030b1u2d3d4h5a0x00280010b1u2d3d4h5a0x00280011b1u2d3d4h5a0x00080008b1u2d3d4h5a0x00200013b1u2d3d4h5a0x0008103Eb1u2d3d4h5a0x00181030b1u2d3d4h5a0x00080070b1u2d3d4h5a0x00200062b1u2d3d4h5a0x00185101";
 
 # 什么傻逼 qinniao，不会是北大青鸟吧？看上去是个小作坊外包，应该不会有更多域名了。
-base = "http://qinniaofu.coolingesaving.com:63001"
+base_url = "http://qinniaofu.coolingesaving.com:63001"
 
 
 def _send_message(ws, id_, **message):
 	return ws.send_str(str(id_) + json.dumps(["sendMessage", message]))
 
 
-async def _request_dcm(ws, hospital_id, study, series, instance):
+async def _get_dcm(ws, hospital_id, study, series, instance):
 	await _send_message(
 		ws, 42,
 		hospital_id=hospital_id,
@@ -44,17 +50,41 @@ async def _request_dcm(ws, hospital_id, study, series, instance):
 	return (await anext(ws)).data[1:]
 
 
+async def download_study(ws: ClientWebSocketResponse, info):
+	hospital_id, study = info["hosipital"].split(separator, 2)
+	series_list, sizes = info["series"], info["series_dicom_number"]
+	save_dir = Path(f"download/{hospital_id}-{study}")
+
+	for sid in series_list:
+		if sid.startswith("dfyfilm"):  # 最后会有一张非 DICOM 图片。
+			continue
+
+		progress = trange(1, sizes[sid] + 1, unit="张", file=sys.stdout)
+		directory: Optional[Path] = None
+
+		for i in progress:
+			data = await _get_dcm(ws, hospital_id, study, sid, i)
+
+			if not directory:
+				dicom_file = dcmread(BytesIO(data))
+				desc = dicom_file.SeriesDescription or sid
+
+				directory = save_dir / pathify(desc)
+				directory.mkdir(parents=True, exist_ok=True)
+				progress.set_description(desc)
+
+			directory.joinpath(f"{i}.dcm").write_bytes(data)
+
+
 async def run(url):
-	t = random.choices(string.ascii_letters + string.digits, k=7)
+	t = "".join(random.choices(string.ascii_letters + string.digits, k=7))
 
 	url = URL(url)
 	hospital_id = url.query["a"]
 	study = url.query["b"]
 	password = url.query["c"]
 
-	out_dir = Path(f"download/{hospital_id}-{study}")
-
-	async with new_http_client() as client:
+	async with new_http_client(base_url) as client:
 		async with client.get(f"/socket.io/?EIO=3&transport=polling&t={t}") as response:
 			text = await response.text()
 			text = text[text.index("{"): text.rindex("}") + 1]
@@ -68,15 +98,4 @@ async def run(url):
 
 			await _send_message(ws, 42, type="saveC", hospital_id=hospital_id, study=study, password=password)
 			message = await anext(ws)
-			info = json.loads(message.data[2:])[1]
-			series_list, sizes = info["series"], info["series_dicom_number"]
-
-			print(f"保存到: {out_dir}，共 {len(series_list)} 张序列")
-			for sid in series_list:
-				if sid.startswith("dfyfilm"):  # 最后会有一张非 DICOM 图片，跳过。
-					continue
-				out_dir.joinpath(sid).mkdir(parents=True, exist_ok=True)
-
-				for i in tqdm(range(1, sizes[sid] + 1), desc=sid, unit="张", file=sys.stdout):
-					dcm = await _request_dcm(ws, hospital_id, study, sid, i)
-					out_dir.joinpath(sid, f"{i}.dcm").write_bytes(dcm)
+			await download_study(ws, json.loads(message.data[2:])[1])
