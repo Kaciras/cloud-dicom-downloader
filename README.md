@@ -53,4 +53,4 @@ URL 格式：`https://mdmis.cq12320.cn/wcs1/mdmis-app/h5/#/share/detail?share_id
 
 ## 开发
 
-由于爬虫无法只靠本机调试，如有问题请提 Issue 或 Pull Request，并附带报告的地址和密码（如果有），报告不会被用于开发本项目之外的目的。
+由于爬虫无法只靠本机调试，如有问题请提 Issue 或发送邮件到 [kaciras@outlook.com](mailto:kaciras@outlook.com)，附带报告的地址和密码（如果有），报告不会被用于开发本项目之外的目的。
