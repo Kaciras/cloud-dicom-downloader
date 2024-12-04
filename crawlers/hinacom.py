@@ -25,88 +25,11 @@ _TARGET_PATH = re.compile(r'var TARGET_PATH = "([^"]+)"')
 _VAR_RE = re.compile(r'var (STUDY_ID|ACCESSION_NUMBER|STUDY_EXAM_UID|LOAD_IMAGE_CACHE_KEY) = "([^"]+)"')
 
 
-async def get_viewer_url(share_url, password):
-	print(f"下载海纳医信 DICOM，报告 ID：{share_url.split('/')[-1]}，密码：{password}")
+class HinacomDownloader:
+	"""
+	海纳医信医疗影像系统的下载器，该系统在中国的多个地区被采用。
+	"""
 
-	async with new_http_client() as client:
-		# 先是入口页面，它会重定向到登录页并设置一个 Cookie
-		async with client.get(share_url) as response:
-			url = response.real_url
-			uuid = url.path.split("/")[-1]
-
-		# 登录报告页，成功后又会拿到 Cookies，从中找查看影像的链接。
-		_headers = {"content-type": "application/x-www-form-urlencoded"}
-		async with client.post(url, data=f"id={uuid}&Password={password}", headers=_headers) as response:
-			html = await response.text()
-			match = _LINK_VIEW.search(html)
-			if not match:
-				raise Exception("链接不存在，可能被取消分享了。")
-
-			return str(url.origin()) + match.group(0)
-
-
-async def create_downloader(viewer_url):
-	client = new_http_client()
-
-	# 访问查影像的链接。
-	async with client.get(viewer_url) as response:
-		html2 = await response.text()
-		matches = _LINK_ENTRY.search(html2)
-
-	# 中间不知道为什么又要跳转一次，端口还变了。
-	async with client.get(matches.group(1)) as response:
-		html3 = await response.text("utf-8")
-		client._base_url = response.real_url.origin()
-		matches = _TARGET_PATH.search(html3)
-
-	# 查看器页（ImageViewer/StudyView），关键信息就写在 JS 里。
-	async with client.get(matches.group(1)) as response:
-		html4 = await response.text()
-		matches = _VAR_RE.findall(html4)
-		top_study_id = matches[0][1]
-		accession_number = matches[1][1]
-		exam_uid = matches[2][1]
-		cache_key = matches[3][1]
-
-	params = {
-		"studyId": top_study_id,
-		"accessionNumber": accession_number,
-		"examuid": exam_uid,
-		"minThickness": "5"
-	}
-	async with client.get("/ImageViewer/GetImageSet", params=params) as response:
-		image_set = await response.json()
-
-	return _HinacomDownloader(client, cache_key, image_set)
-
-
-async def create_downloader_1(viewer_url, client: ClientSession):
-	# 查看器页（ImageViewer/StudyView），关键信息就写在 JS 里。
-	async with client.get(viewer_url) as response:
-		html4 = await response.text()
-		matches = _VAR_RE.findall(html4)
-		top_study_id = matches[0][1]
-		accession_number = matches[1][1]
-		exam_uid = matches[2][1]
-		cache_key = matches[3][1]
-
-		offset = response.real_url.path.index("/ImageViewer/StudyView")+1
-		client._base_url = response.real_url.origin().with_path(response.real_url.path[:offset])
-
-	params = {
-		"studyId": top_study_id,
-		"accessionNumber": accession_number,
-		"examuid": exam_uid,
-		"minThickness": "5"
-	}
-	async with client.get("ImageViewer/GetImageSet", params=params) as response:
-		image_set = await response.json()
-
-	return _HinacomDownloader(client, cache_key, image_set)
-
-
-
-class _HinacomDownloader:
 	client: ClientSession
 	cache_key: str
 	dataset: dict[str, Any]
@@ -125,7 +48,7 @@ class _HinacomDownloader:
 		return self.client.close()
 
 	async def _refresh_cac(self):
-		"""每一分钟要刷新一下 CAC_AUTH 令牌，因为 PY 没有尾递归优化所以还是用循环"""
+		"""每分钟要刷新一下 CAC_AUTH 令牌，因为 PY 没有尾递归优化所以还是用循环"""
 		while True:
 			await asyncio.sleep(60)
 			(await self.client.get("ImageViewer/renewcacauth")).close()
@@ -151,11 +74,12 @@ class _HinacomDownloader:
 		async with self.client.get(api, params={"ck": ck}) as response:
 			return await response.read(), response.headers["X-ImageFrame"]
 
-	async def download_all(self, is_raw: bool):
+	async def download_all(self, is_raw=False):
 		"""
-		快捷方法，下载全部序列到 DCM 文件，会在控制台显示进度条和相关信息。
+		快捷方法，下载全部序列到 DCM 文件，保存的文件名将根据报告自动生成。
+		该方法会在控制台显示进度条和相关信息。
 
-		:param is_raw: 是否下载未压缩的图像
+		:param is_raw: 是否下载未压缩的图像，默认下载 JPEG2000 格式的。
 		"""
 		save_to = _get_save_dir(self.dataset)
 		print(f'保存到: {save_to}')
@@ -175,6 +99,38 @@ class _HinacomDownloader:
 				pixels, _ = await self.get_image(info, is_raw)
 				dir_.mkdir(parents=True, exist_ok=True)
 				_write_dicom(tags, pixels, dir_ / f"{i}.dcm")
+
+	@staticmethod
+	async def from_url(client: ClientSession, viewer_url: str):
+		"""
+
+		:param client: 会话对象，要先拿到 ZFP_SessionId 和 ZFPXAUTH
+		:param viewer_url: 查看器页面，即路径中有 /ImageViewer/StudyView
+		"""
+		async with client.get(viewer_url) as response:
+			html4 = await response.text()
+			matches = _VAR_RE.findall(html4)
+			top_study_id = matches[0][1]
+			accession_number = matches[1][1]
+			exam_uid = matches[2][1]
+			cache_key = matches[3][1]
+
+			# 查看器可能被整合进了其它系统里，路径有前缀。
+			origin, path = response.real_url.origin(), response.real_url.path
+			offset = path.index("/ImageViewer/StudyView")
+			client._base_url = origin.with_path(path[:offset + 1])
+
+		# 获取检查的基本信息，顺便也判断下访问是否成功。
+		params = {
+			"studyId": top_study_id,
+			"accessionNumber": accession_number,
+			"examuid": exam_uid,
+			"minThickness": "5"
+		}
+		async with client.get("ImageViewer/GetImageSet", params=params) as response:
+			image_set = await response.json()
+
+		return HinacomDownloader(client, cache_key, image_set)
 
 
 def _get_save_dir(image_set):
@@ -215,12 +171,38 @@ def _write_dicom(tag_list, image, filename):
 	ds.save_as(filename, enforce_file_format=True)
 
 
-async def run(report_url, password, *args):
-	viewer_url = await get_viewer_url(report_url, password)
-	is_raw = "--raw" in args
+async def run(share_url, password, *args):
+	print(f"下载海纳医信 DICOM，报告 ID：{share_url.split('/')[-1]}，密码：{password}")
+	client = new_http_client()
 
-	async with await create_downloader(viewer_url) as downloader:
-		await downloader.download_all(is_raw)
+	# 先是入口页面，它会重定向到登录页并设置一个 Cookie
+	async with client.get(share_url) as response:
+		url = response.real_url
+		uuid = url.path.split("/")[-1]
+
+	# 登录报告页，成功后又会拿到 Cookies，从中找查看影像的链接。
+	_headers = {"content-type": "application/x-www-form-urlencoded"}
+	async with client.post(url, data=f"id={uuid}&Password={password}", headers=_headers) as response:
+		html = await response.text()
+		match = _LINK_VIEW.search(html)
+		if not match:
+			raise Exception("链接不存在，可能被取消分享了。")
+
+		redirect_url = str(url.origin()) + match.group(0)
+
+	# 访问查影像的链接。
+	async with client.get(redirect_url) as response:
+		html2 = await response.text()
+		matches = _LINK_ENTRY.search(html2)
+
+	# 中间不知道为什么又要跳转一次，端口还变了。
+	async with client.get(matches.group(1)) as response:
+		html3 = await response.text("utf-8")
+		client._base_url = response.real_url.origin()
+		viewer_url = _TARGET_PATH.search(html3).group(1)
+
+	async with await HinacomDownloader.from_url(client, viewer_url) as downloader:
+		await downloader.download_all("--raw" in args)
 
 
 # ============================== 下面仅调试用 ==============================
