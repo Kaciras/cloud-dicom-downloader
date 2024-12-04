@@ -103,9 +103,10 @@ class HinacomDownloader:
 	@staticmethod
 	async def from_url(client: ClientSession, viewer_url: str):
 		"""
+		从查看器页读取必要的信息，创建下载器，需要先登录并将 Cookies 保存到 client 中。
 
 		:param client: 会话对象，要先拿到 ZFP_SessionId 和 ZFPXAUTH
-		:param viewer_url: 查看器页面，即路径中有 /ImageViewer/StudyView
+		:param viewer_url: 页面 URL，路径中要有 /ImageViewer/StudyView
 		"""
 		async with client.get(viewer_url) as response:
 			html4 = await response.text()
@@ -140,7 +141,7 @@ def _get_save_dir(image_set):
 	return Path(f"download/{patient}-{exam}-{date}")
 
 
-def _write_dicom(tag_list, image, filename):
+def _write_dicom(tag_list: list, image: bytes, filename: Path):
 	ds = Dataset()
 	ds.file_meta = FileMetaDataset()
 
@@ -207,38 +208,43 @@ async def run(share_url, password, *args):
 
 # ============================== 下面仅调试用 ==============================
 
-TEMP_DIR = Path("download/dicom_temp")
+
+async def fetch_responses(downloader: HinacomDownloader, save_to: Path, is_raw: bool):
+	"""
+	下载原始的响应用于调试，后续可以用 build_dcm_from_responses 组合成 DCM 文件。
+
+	:param downloader: 下载器对象
+	:param save_to: 保存的路径
+	:param is_raw: 是否下载未压缩的图像，默认下载 JPEG2000 格式的。
+	"""
+	save_to.mkdir(parents=True, exist_ok=True)
+	save_to.joinpath("ImageSet.json").write_text(json.dumps(downloader.dataset))
+
+	for series in downloader.dataset["displaySets"]:
+		name, images = pathify(series["description"]), series["images"]
+		dir_ = save_to / name
+		dir_.mkdir(exist_ok=True)
+
+		for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
+			tags = await downloader.get_tags(info)
+			pixels, attrs = await downloader.get_image(info, is_raw)
+			dir_.joinpath(f"{i}-tags.json").write_text(json.dumps(tags))
+			dir_.joinpath(f"{i}.json").write_text(attrs)
+			dir_.joinpath(f"{i}.slice").write_bytes(pixels)
 
 
-async def download_debug(report_url, password, *args):
-	viewer_url = await get_viewer_url(report_url, password)
-	is_raw = "--raw" in args
-	TEMP_DIR.mkdir(parents=True, exist_ok=True)
+def build_dcm_from_responses(source_dir: Path):
+	"""
+	读取所有临时文件夹的数据（fetch_responses 下载的），合并成 DCM 文件。
 
-	async with await create_downloader(viewer_url) as downloader:
-		TEMP_DIR.joinpath("ImageSet.json").write_text(json.dumps(downloader.dataset))
-
-		for series in downloader.dataset["displaySets"]:
-			name, images = series["description"].rstrip(), series["images"]
-			dir_ = TEMP_DIR / name
-			dir_.mkdir(exist_ok=True)
-
-			for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
-				tags = await downloader.get_tags(info)
-				pixels, attrs = await downloader.get_image(info, is_raw)
-				dir_.joinpath(f"{i}-tags.json").write_text(json.dumps(tags))
-				dir_.joinpath(f"{i}.json").write_text(attrs)
-				dir_.joinpath(f"{i}.slice").write_bytes(pixels)
-
-
-def build_dicom_files():
-	"""读取所有临时文件夹的数据，生成跟正常下载一样的 DCM 文件"""
-	with TEMP_DIR.joinpath("ImageSet.json").open() as fp:
+	:param source_dir: fetch_responses 的 save_t
+	"""
+	with source_dir.joinpath("ImageSet.json").open() as fp:
 		image_set = json.load(fp)
 		name_map = {s["description"].rstrip(): s for s in image_set["displaySets"]}
 		save_dir = _get_save_dir(image_set)
 
-	for series_dir in TEMP_DIR.iterdir():
+	for series_dir in source_dir.iterdir():
 		if series_dir.is_file():
 			continue
 		info = name_map[series_dir.name]
@@ -264,9 +270,3 @@ def diff_tags(pivot, another):
 	for item in another:
 		if tag_map[item["tag"]] != item["value"]:
 			print(f"{item['tag']} {item['name']}: {item['value']}")
-
-
-if __name__ == '__main__':
-	# asyncio.run(download_debug(*sys.argv[1:]))
-	# diff_tags(r"C:\Users\Kaciras\Desktop\a.json", r"C:\Users\Kaciras\Desktop\b.json")
-	build_dicom_files()
