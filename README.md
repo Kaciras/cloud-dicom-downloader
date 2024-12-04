@@ -8,6 +8,7 @@
 * [支持的站点](#支持的站点)
   * [qr.szjudianyun.com](#qrszjudianyuncom)
   * [medicalimagecloud.com](#medicalimagecloudcom)
+  * [mdmis.cq12320.cn](#mdmiscq12320cn)
 * [开发](#开发)
 
 ## 安装
