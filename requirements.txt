@@ -1,6 +1,6 @@
-tqdm~=4.66
-aiohttp~=3.10
-yarl~=1.15
+tqdm~=4.67
+aiohttp~=3.11
+yarl~=1.18
 pydicom~=3.0
 
 pytest~=8.3
