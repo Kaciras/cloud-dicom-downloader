@@ -151,6 +151,31 @@ class _HinacomDownloader:
 		async with self.client.get(api, params={"ck": ck}) as response:
 			return await response.read(), response.headers["X-ImageFrame"]
 
+	async def download_all(self, is_raw: bool):
+		"""
+		快捷方法，下载全部序列到 DCM 文件，会在控制台显示进度条和相关信息。
+
+		:param is_raw: 是否下载未压缩的图像
+		"""
+		save_to = _get_save_dir(self.dataset)
+		print(f'保存到: {save_to}')
+
+		for series in self.dataset["displaySets"]:
+			name, images = pathify(series["description"]), series["images"]
+			dir_ = save_to / name
+
+			for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
+				# 图片响应头包含的标签不够，必须每个都请求 GetImageDicomTags。
+				tags = await self.get_tags(info)
+
+				# 没有标签的视为非 DCM 文件，跳过。
+				if len(tags) == 0:
+					continue
+
+				pixels, _ = await self.get_image(info, is_raw)
+				dir_.mkdir(parents=True, exist_ok=True)
+				_write_dicom(tags, pixels, dir_ / f"{i}.dcm")
+
 
 def _get_save_dir(image_set):
 	exam = pathify(image_set["studyDescription"])
@@ -195,24 +220,7 @@ async def run(report_url, password, *args):
 	is_raw = "--raw" in args
 
 	async with await create_downloader(viewer_url) as downloader:
-		save_to = _get_save_dir(downloader.dataset)
-		print(f'保存到: {save_to}')
-
-		for series in downloader.dataset["displaySets"]:
-			name, images = pathify(series["description"]), series["images"]
-			dir_ = save_to / name
-
-			for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
-				# 图片响应头包含的标签不够，必须每个都请求 GetImageDicomTags。
-				tags = await downloader.get_tags(info)
-
-				# 没有标签的视为非 DCM 文件，跳过。
-				if len(tags) == 0:
-					continue
-
-				pixels, _ = await downloader.get_image(info, is_raw)
-				dir_.mkdir(parents=True, exist_ok=True)
-				_write_dicom(tags, pixels, dir_ / f"{i}.dcm")
+		await downloader.download_all(is_raw)
 
 
 # ============================== 下面仅调试用 ==============================

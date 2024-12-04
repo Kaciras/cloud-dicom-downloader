@@ -43,6 +43,14 @@ python downloader.py <url> <password> [--raw]
 > [!WARNING]
 > 由于未能下载到标签的类型信息，所有私有标签将保存为`LO`类型。
 
+### mdmis.cq12320.cn
+
+重庆卫健委在线报告查看网站，其中的影像查看器也是海纳医信。
+
+URL 格式：`https://mdmis.cq12320.cn/wcs1/mdmis-app/h5/#/share/detail?share_id=<32-chars-hex>&content=<token>&channel=share`
+
+命令用法与注意事项跟`medicalimagecloud.com`相同，但不需要密码。
+
 ## 开发
 
 由于爬虫无法只靠本机调试，如有问题请提 Issue 或 Pull Request，并附带报告的地址和密码（如果有），报告不会被用于开发本项目之外的目的。
