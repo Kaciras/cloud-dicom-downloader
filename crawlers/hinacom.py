@@ -80,6 +80,32 @@ async def create_downloader(viewer_url):
 	return _HinacomDownloader(client, cache_key, image_set)
 
 
+async def create_downloader_1(viewer_url, client: ClientSession):
+	# 查看器页（ImageViewer/StudyView），关键信息就写在 JS 里。
+	async with client.get(viewer_url) as response:
+		html4 = await response.text()
+		matches = _VAR_RE.findall(html4)
+		top_study_id = matches[0][1]
+		accession_number = matches[1][1]
+		exam_uid = matches[2][1]
+		cache_key = matches[3][1]
+
+		offset = response.real_url.path.index("/ImageViewer/StudyView")+1
+		client._base_url = response.real_url.origin().with_path(response.real_url.path[:offset])
+
+	params = {
+		"studyId": top_study_id,
+		"accessionNumber": accession_number,
+		"examuid": exam_uid,
+		"minThickness": "5"
+	}
+	async with client.get("ImageViewer/GetImageSet", params=params) as response:
+		image_set = await response.json()
+
+	return _HinacomDownloader(client, cache_key, image_set)
+
+
+
 class _HinacomDownloader:
 	client: ClientSession
 	cache_key: str
@@ -99,13 +125,13 @@ class _HinacomDownloader:
 		return self.client.close()
 
 	async def _refresh_cac(self):
-		"""每一分钟要刷新一下 CAC_AUTH 令牌，另外 PY 没有尾递归优化所以还是用循环"""
+		"""每一分钟要刷新一下 CAC_AUTH 令牌，因为 PY 没有尾递归优化所以还是用循环"""
 		while True:
 			await asyncio.sleep(60)
-			(await self.client.get("/ImageViewer/renewcacauth")).close()
+			(await self.client.get("ImageViewer/renewcacauth")).close()
 
 	async def get_tags(self, info):
-		api = "/ImageViewer/GetImageDicomTags"
+		api = "ImageViewer/GetImageDicomTags"
 		params = {
 			"studyId": info['studyId'],
 			"imageId": info['imageId'],
@@ -118,9 +144,9 @@ class _HinacomDownloader:
 	async def get_image(self, info, raw: bool):
 		s, i, ck = info['studyId'], info['imageId'], self.cache_key
 		if raw:
-			api = f"/imageservice/api/image/dicom/{s}/{i}/0/0"
+			api = f"imageservice/api/image/dicom/{s}/{i}/0/0"
 		else:
-			api = f"/imageservice/api/image/j2k/{s}/{i}/0/3"
+			api = f"imageservice/api/image/j2k/{s}/{i}/0/3"
 
 		async with self.client.get(api, params={"ck": ck}) as response:
 			return await response.read(), response.headers["X-ImageFrame"]

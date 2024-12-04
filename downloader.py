@@ -3,7 +3,7 @@ import sys
 
 from yarl import URL
 
-from crawlers import szjudianyun, hinacom
+from crawlers import szjudianyun, hinacom, cq12320
 
 
 async def main():
@@ -11,6 +11,8 @@ async def main():
 
 	if host.endswith(".medicalimagecloud.com"):
 		module_ = hinacom
+	elif host == "mdmis.cq12320.cn":
+		module_ = cq12320
 	elif host == "qr.szjudianyun.com":
 		module_ = szjudianyun
 	else:
