@@ -59,7 +59,7 @@ async def create_downloader(viewer_url):
 		client._base_url = response.real_url.origin()
 		matches = _TARGET_PATH.search(html3)
 
-	# 查看器页，关键信息就写在 JS 里。
+	# 查看器页（ImageViewer/StudyView），关键信息就写在 JS 里。
 	async with client.get(matches.group(1)) as response:
 		html4 = await response.text()
 		matches = _VAR_RE.findall(html4)
@@ -129,7 +129,7 @@ class _HinacomDownloader:
 def _get_save_dir(image_set):
 	exam = pathify(image_set["studyDescription"])
 	date = image_set["studyDate"]
-	patient = image_set["patientName"]
+	patient = pathify(image_set["patientName"])
 	return Path(f"download/{patient}-{exam}-{date}")
 
 
