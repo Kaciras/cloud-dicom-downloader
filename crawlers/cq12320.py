@@ -24,15 +24,18 @@ async def run(share_url, *args):
 	}
 	async with client.post(f"{_BASE}/api/share/check/time", json=form) as response:
 		body = await response.json()
-		extend = json.loads(body["data"]["extend"])
-		study_id, hospital_code = extend["study_primary_id"], extend["hospital_code"]
+		if body["code"] != 200:
+			raise Exception(body['message'])
 
-	print(f"hospital_code: {hospital_code}")
-	print(f"study_primary_id: {study_id}\n")
+		extend = json.loads(body["data"]["extend"])
+		study, hospital = extend["study_primary_id"], extend["hospital_code"]
+
+		print(f"hospital_code: {hospital}")
+		print(f"study_primary_id: {study}\n")
 
 	# 拿 ZFP_SessionId, ZFPXAUTH，注意这里自动重定向了一次：
 	# /wcs1/mdmis-app/h5/api/qinming_h5/entry/study?token=...
-	async with client.get(f"{_BASE}/api/qinming_h5/api/ch/report/PacsEntry.aspx?hospitalCode={hospital_code}&studyPrimaryId={study_id}") as response:
+	async with client.get(f"{_BASE}/api/qinming_h5/api/ch/report/PacsEntry.aspx?hospitalCode={hospital}&studyPrimaryId={study}") as response:
 		matches = _TARGET_URL.search(await response.text())
 		viewer_url = str(response.real_url.origin()) + matches.group(1)
 
