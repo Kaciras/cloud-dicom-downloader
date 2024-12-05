@@ -88,7 +88,8 @@ class HinacomDownloader:
 			name, images = pathify(series["description"]), series["images"]
 			dir_ = save_to / name
 
-			for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
+			tasks = tqdm(images, desc=name, unit="张", file=sys.stdout)
+			for i, info in enumerate(tasks, 1):
 				# 图片响应头包含的标签不够，必须每个都请求 GetImageDicomTags。
 				tags = await self.get_tags(info)
 
@@ -225,7 +226,8 @@ async def fetch_responses(downloader: HinacomDownloader, save_to: Path, is_raw: 
 		dir_ = save_to / name
 		dir_.mkdir(exist_ok=True)
 
-		for i, info in enumerate(tqdm(images, desc=name, unit="张", file=sys.stdout)):
+		tasks = tqdm(images, desc=name, unit="张", file=sys.stdout)
+		for i, info in enumerate(tasks, 1):
 			tags = await downloader.get_tags(info)
 			pixels, attrs = await downloader.get_image(info, is_raw)
 			dir_.joinpath(f"{i}-tags.json").write_text(json.dumps(tags))
@@ -251,7 +253,7 @@ def build_dcm_from_responses(source_dir: Path):
 		out_dir = save_dir / pathify(series_dir.name)
 		out_dir.mkdir(parents=True, exist_ok=True)
 
-		for i in range(len(info["images"])):
+		for i in range(1, len(info["images"]) + 1):
 			tags = series_dir.joinpath(f"{i}-tags.json").read_text("utf8")
 			if tags == "[]":
 				continue
