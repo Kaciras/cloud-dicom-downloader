@@ -9,6 +9,7 @@
   * [qr.szjudianyun.com](#qrszjudianyuncom)
   * [medicalimagecloud.com](#medicalimagecloudcom)
   * [mdmis.cq12320.cn](#mdmiscq12320cn)
+  * [ylyyx.shdc.org.cn](#ylyyxshdcorgcn)
 * [开发](#开发)
 
 ## 安装
@@ -51,6 +52,14 @@ python downloader.py <url> <password> [--raw]
 URL 格式：`https://mdmis.cq12320.cn/wcs1/mdmis-app/h5/#/share/detail?share_id=<32-chars-hex>&content=<token>&channel=share`
 
 命令用法与注意事项跟`medicalimagecloud.com`相同，但不需要密码。
+
+### ylyyx.shdc.org.cn
+
+上海申康医院发展中心的在线影像查看器，URL 格式为`https://ylyyx.shdc.org.cn/#/home?sid=<number>&token=<32-chars-hex>&appid=SHPulmH`。
+
+```
+python downloader.py <url>
+```
 
 ## 开发
 
