@@ -1,3 +1,6 @@
+"""
+https://blog.kaciras.com/article/45/download-dicom-files-from-hinacom-cloud-viewer
+"""
 import hashlib
 import random
 import re
@@ -27,6 +30,9 @@ TIME_SEPS = re.compile(r"[-: ]")
 def _sign_parameters(query: dict, params: dict):
 	"""
 	该网站的 API 请求有签名机制，算法倒不复杂，扒下代码就能还原。
+
+	:param query URL 中的参数
+	:param params API 请求的参数，签名会添加到上面
 	"""
 	params["nonce_str"] = NONCE
 	params["token"] = query["token"]
@@ -37,6 +43,9 @@ def _sign_parameters(query: dict, params: dict):
 def _get_auth(query: dict, image_name: str):
 	"""
 	DCM 文件的请求又有认证，用得是请求头，同样扒代码可以分析出来。
+
+	:param query URL 中的参数
+	:param image_name 图片名，是 8 位大写 HEX
 	"""
 	parts = query["sid"], query["token"], str(round(time.time() * 1000))
 	token = hashlib.md5(";".join(parts + (image_name, KEY)).encode()).hexdigest()
