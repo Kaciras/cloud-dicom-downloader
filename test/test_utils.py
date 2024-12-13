@@ -4,7 +4,8 @@ import pytest
 from aiohttp import web, ClientResponseError
 from pytest import mark
 
-from crawlers._utils import pathify, new_http_client
+# noinspection PyProtectedMember
+from crawlers._utils import pathify, new_http_client, make_unique_dir
 
 
 @mark.parametrize('text, expected', [
@@ -39,3 +40,23 @@ async def test_response_dumping():
 	finally:
 		await runner.cleanup()
 		Path("dump.zip").unlink()
+
+
+def test_make_unique_dir():
+	path = Path("download/__test_dir")
+	created = make_unique_dir(path)
+
+	assert created.is_dir()
+	assert created == path
+	created.rmdir()
+
+
+def test_make_unique_dir_2():
+	path = Path("download/__test_dir (1)")
+	path.mkdir(parents=True)
+	created = make_unique_dir(path)
+
+	assert created.is_dir()
+	assert created == Path("download/__test_dir (2)")
+	path.rmdir()
+	created.rmdir()

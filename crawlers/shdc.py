@@ -13,7 +13,7 @@ from urllib.parse import parse_qsl, urlencode
 from tqdm import tqdm
 from yarl import URL
 
-from crawlers._utils import new_http_client, pathify
+from crawlers._utils import new_http_client, pathify, make_unique_dir
 
 TABLE_62 = string.digits + string.ascii_lowercase + string.ascii_uppercase
 
@@ -86,8 +86,7 @@ async def run(share_url: str):
 
 		for series in series_list:
 			desc = pathify(series["description"]) or "Unnamed"
-			dir_ = save_to / desc
-			dir_.mkdir(parents=True, exist_ok=True)
+			dir_ = make_unique_dir(save_to / desc)
 
 			tasks = tqdm(series["names"].split(","), desc=desc, unit="张", file=sys.stdout)
 			for i, name in enumerate(tasks, 1):

@@ -2,13 +2,14 @@ import random
 import re
 import sys
 from io import TextIOWrapper
+from pathlib import Path
 from zipfile import ZipFile
 
 import aiohttp
 from pydicom.tag import Tag
 from pydicom.valuerep import VR, STR_VR, INT_VR, FLOAT_VR
 
-_UA_VER = random.randint(109, 131)
+_UA_VER = random.randint(109, 134)
 
 _HEADERS = {
 	"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -84,6 +85,34 @@ def pathify(text: str):
 	return _illegal_path_chars.sub(_to_full_width, text.strip())
 
 
+_filename_serial_re = re.compile(r"^(.+?) \((\d+)\)$")
+
+
+def make_unique_dir(path: Path):
+	"""
+	创建一个新的文件夹，如果指定的名字已存在则在后面添加数字使其唯一。
+	实际中发现一些序列的名字相同，使用此方法可确保不覆盖。
+
+	:param path: 原始路径
+	:return: 新建的文件夹的路径，可能不等于原始路径
+	"""
+	try:
+		path.mkdir(parents=True, exist_ok=False)
+		return path
+	except OSError:
+		if not path.is_dir():
+			raise
+		matches = _filename_serial_re.match(path.stem)
+		if matches:
+			n = int(matches.group(2)) + 1
+			alt = f"{matches.group(1)} ({n})"
+		else:
+			alt = f"{path.stem} (1)"
+
+		alt += path.suffix
+		return make_unique_dir(path.parent / alt)
+
+
 def parse_dcm_value(value: str, vr: str):
 	"""
 	在 pydicom 里没找到自动转换的功能，得自己处理下类型。
@@ -105,3 +134,24 @@ def parse_dcm_value(value: str, vr: str):
 	if len(parts) == 1:
 		return cast_fn(value)
 	return [cast_fn(x) for x in parts]
+
+
+def guess_value_represent(value: str):
+	"""根据值猜测 DICOM 的类型（VR），不一定等于真正的类型"""
+	parts = value.split("\\")
+
+	try:
+		max_value, signed = 0, False
+		res = []
+		for part in parts:
+			v = int(part)
+			res.append(v)
+			max_value = max(max_value, abs(v))
+			signed = signed or v < 0
+		if max_value > 65535:
+			vr = "SL" if signed else "UL"
+		else:
+			vr = "SS" if signed else "US"
+		return vr, res
+	except ValueError:
+		pass

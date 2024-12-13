@@ -15,7 +15,7 @@ from pydicom import dcmread
 from tqdm import trange
 from yarl import URL
 
-from crawlers._utils import new_http_client, pathify
+from crawlers._utils import new_http_client, pathify, make_unique_dir
 
 separator = "b1u2d3d4h5a"
 
@@ -71,8 +71,7 @@ async def download_study(ws: ClientWebSocketResponse, info):
 				dicom_file = dcmread(BytesIO(data))
 				desc = dicom_file.SeriesDescription or sid
 
-				directory = save_dir / pathify(desc)
-				directory.mkdir(parents=True, exist_ok=True)
+				directory = make_unique_dir(save_dir / pathify(desc))
 				progress.set_description(desc)
 
 			directory.joinpath(f"{i}.dcm").write_bytes(data)

@@ -7,7 +7,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from aiohttp import ClientSession
 from pydicom.datadict import DicomDictionary
@@ -17,7 +17,7 @@ from pydicom.tag import Tag
 from pydicom.uid import ExplicitVRLittleEndian, JPEG2000Lossless
 from tqdm import tqdm
 
-from crawlers._utils import pathify, new_http_client, parse_dcm_value
+from crawlers._utils import pathify, new_http_client, parse_dcm_value, make_unique_dir
 
 _LINK_VIEW = re.compile(r"/Study/ViewImage\?studyId=([\w-]+)")
 _LINK_ENTRY = re.compile(r"window\.location\.href = '([^']+)'")
@@ -86,7 +86,7 @@ class HinacomDownloader:
 
 		for series in self.dataset["displaySets"]:
 			name, images = pathify(series["description"]), series["images"]
-			dir_ = save_to / name
+			dir_: Optional[Path] = None
 
 			tasks = tqdm(images, desc=name, unit="张", file=sys.stdout)
 			for i, info in enumerate(tasks, 1):
@@ -97,8 +97,11 @@ class HinacomDownloader:
 				if len(tags) == 0:
 					continue
 
+				# 仅有图片时才创建目录，避免空文件夹。
+				if not dir_:
+					dir_ = make_unique_dir(save_to / name)
+
 				pixels, _ = await self.get_image(info, is_raw)
-				dir_.mkdir(parents=True, exist_ok=True)
 				_write_dicom(tags, pixels, dir_ / f"{i}.dcm")
 
 	@staticmethod
@@ -223,8 +226,7 @@ async def fetch_responses(downloader: HinacomDownloader, save_to: Path, is_raw: 
 
 	for series in downloader.dataset["displaySets"]:
 		name, images = pathify(series["description"]), series["images"]
-		dir_ = save_to / name
-		dir_.mkdir(exist_ok=True)
+		dir_ = make_unique_dir(save_to / name)
 
 		tasks = tqdm(images, desc=name, unit="张", file=sys.stdout)
 		for i, info in enumerate(tasks, 1):
