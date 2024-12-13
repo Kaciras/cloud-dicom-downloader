@@ -1,12 +1,12 @@
 """
 https://blog.kaciras.com/article/45/download-dicom-files-from-hinacom-cloud-viewer
 """
-import hashlib
 import random
 import re
 import string
 import sys
 import time
+from hashlib import md5
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode
 
@@ -27,7 +27,7 @@ NONCE = "".join(random.choices(TABLE_62, k=6))
 TIME_SEPS = re.compile(r"[-: ]")
 
 
-def _sign_parameters(query: dict, params: dict):
+def _sign(query: dict, params: dict):
 	"""
 	该网站的 API 请求有签名机制，算法倒不复杂，扒下代码就能还原。
 
@@ -37,7 +37,7 @@ def _sign_parameters(query: dict, params: dict):
 	params["nonce_str"] = NONCE
 	params["token"] = query["token"]
 	input_ = urlencode(params) + "&key=" + KEY
-	params["sign"] = hashlib.md5(input_.encode()).hexdigest()
+	params["sign"] = md5(input_.encode()).hexdigest()
 
 
 def _get_auth(query: dict, image_name: str):
@@ -48,7 +48,7 @@ def _get_auth(query: dict, image_name: str):
 	:param image_name 图片名，是 8 位大写 HEX
 	"""
 	parts = query["sid"], query["token"], str(round(time.time() * 1000))
-	token = hashlib.md5(";".join(parts + (image_name, KEY)).encode()).hexdigest()
+	token = md5(";".join(parts + (image_name, KEY)).encode()).hexdigest()
 	return "Basic " + ";".join(parts + (token,))
 
 
@@ -59,32 +59,33 @@ def _get_save_dir(study: dict):
 	return Path(f"download/{patient}-{exam}-{date}")
 
 
+async def api_get(client, query: dict, path: str, **params):
+	_sign(query, params)
+
+	async with client.get(path, params=params) as response:
+		body = await response.json(content_type=None)
+
+	if body["code"] == 0:
+		return body
+	raise Exception(f"错误（{body['code']}），链接过期，或是网站更新了")
+
+
 # 这个网站没有烦人的跳转登录，但是有简单的 API 签名。
 async def run(share_url: str):
 	query = dict(parse_qsl(share_url[share_url.rfind("?") + 1:]))
+	sid = query["sid"]
 	origin = URL(share_url).origin()
 
-	print(f"下载申康 DICOM，报告 ID：{query["sid"]}")
+	print(f"下载申康医院发展中心的 DICOM，报告 ID：{sid}")
 
 	async with new_http_client(base_url=origin) as client:
-		# 先拿检查基本信息，用于生成保存的目录名。
-		p0 = {"sid": query["sid"], "mode": 0}
-		_sign_parameters(query, p0)
-		async with client.get("/api001/study/detail", params=p0) as response:
-			detail = await response.json(content_type=None)
-			if detail["code"] != 0:
-				raise Exception(f"错误（{detail['code']}），链接过期，或是网站更新了")
-
-		p1 = { "sid": query["sid"] }
-		_sign_parameters(query, p1)
-		async with client.get("/api001/series/list", params=p1) as response:
-			data = await response.json(content_type=None)
-			series_list = data["result"]
+		detail = await api_get(client, query, "/api001/study/detail", sid=sid, mode=0)
+		series_list = await api_get(client, query, "/api001/series/list", sid=sid)
 
 		save_to = _get_save_dir(detail["study"])
 		print(f'保存到: {save_to}\n')
 
-		for series in series_list:
+		for series in series_list["result"]:
 			desc = pathify(series["description"]) or "Unnamed"
 			dir_ = make_unique_dir(save_to / desc)
 
