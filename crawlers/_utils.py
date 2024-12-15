@@ -134,24 +134,3 @@ def parse_dcm_value(value: str, vr: str):
 	if len(parts) == 1:
 		return cast_fn(value)
 	return [cast_fn(x) for x in parts]
-
-
-def guess_value_represent(value: str):
-	"""根据值猜测 DICOM 的类型（VR），不一定等于真正的类型"""
-	parts = value.split("\\")
-
-	try:
-		max_value, signed = 0, False
-		res = []
-		for part in parts:
-			v = int(part)
-			res.append(v)
-			max_value = max(max_value, abs(v))
-			signed = signed or v < 0
-		if max_value > 65535:
-			vr = "SL" if signed else "UL"
-		else:
-			vr = "SS" if signed else "US"
-		return vr, res
-	except ValueError:
-		pass

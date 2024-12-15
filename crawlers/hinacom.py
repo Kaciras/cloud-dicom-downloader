@@ -159,6 +159,7 @@ def _write_dicom(tag_list: list, image: bytes, filename: Path):
 			setattr(ds, key, parse_dcm_value(item["value"], vr))
 		else:
 			# 正好 PrivateCreator 出现在它的标签之前，按顺序添加即可。
+			# DataElement 对 LO 类型会自动按斜杠分割多值字符串。
 			ds.add_new(tag, "LO", item["value"])
 
 	ds.file_meta.MediaStorageSOPClassUID = ds.SOPClassUID
