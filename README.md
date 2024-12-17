@@ -61,4 +61,4 @@ python downloader.py <url>
 
 ## 开发
 
-由于爬虫无法只靠本机调试，如有问题请提 Issue 或发送邮件到 [kaciras@outlook.com](mailto:kaciras@outlook.com)，附带报告的地址和密码（如果有），报告不会被用于开发本项目之外的目的。
+由于爬虫无法只靠本机调试，如有问题请提 Issue 或发送邮件到 [contact@kaciras.com](mailto:contact@kaciras.com)，附带报告的地址和密码（如果有），报告不会被用于开发本项目之外的目的。
