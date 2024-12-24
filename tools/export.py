@@ -1,6 +1,6 @@
 """
 DCM 文件转换工具，支持导出为图片或视频。
-TODO: 匿名化，反向转换
+TODO: 匿名化
 """
 from moviepy import ImageClip, VideoFileClip, concatenate_videoclips
 import os
@@ -26,8 +26,8 @@ def images_to_video(images: list[np.array], out_file: Path):
 	print("Video created successfully:", out_file)
 
 
-def video_to_images(file: Path):
-	video = VideoFileClip(file)
+def video_to_images(file: Path, sample_fps=None):
+	return list(VideoFileClip(file).iter_frames(sample_fps))
 
 
 def load_series_images(directory: Path):
@@ -50,10 +50,17 @@ def load_series_images(directory: Path):
 	return images
 
 
-def convert_all():pass
+def save_images(images: list[np.array], directory: Path, ext = "png"):
+	directory.mkdir(exist_ok=True)
+	for i, px in enumerate(images):
+		Image.fromarray(px).save(directory / f"{i}.{ext}")
+
 
 if __name__ == "__main__":
-	image_dir = Path(r"download\test")
+	image_dir = Path(r"D:\Coding\Python\cloud-dicom-downloader\download\75-CT202407010053\1mm, iDose (3).avi")
 	
-	images = load_series_images(image_dir)
-	images_to_video(images, image_dir.with_suffix(".avi"))
+	# images = load_series_images(image_dir)
+	# images_to_video(images, image_dir.with_suffix(".avi"))
+
+	images = video_to_images(image_dir)
+	save_images(images, Path("exports"))

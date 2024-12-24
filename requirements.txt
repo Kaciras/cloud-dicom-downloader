@@ -1,9 +1,10 @@
-tqdm~=4.67
 aiohttp~=3.11
+Pillow~=11.0
+tqdm~=4.67
 yarl~=1.18
 pydicom~=3.0
-moviepy~=2.1
 pylibjpeg~=2.0
+moviepy~=2.1
 
 # pylibjpeg[all]
 pylibjpeg-libjpeg~=2.3
