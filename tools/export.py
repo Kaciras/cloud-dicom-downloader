@@ -6,8 +6,10 @@ from moviepy import ImageClip, VideoFileClip, concatenate_videoclips
 import os
 from pathlib import Path
 import numpy as np
-from pydicom import dcmread, pixels
+from pydicom import dcmread, pixels, Dataset
 from PIL import Image
+from pydicom.uid import ExplicitVRLittleEndian, SecondaryCaptureImageStorage, PYDICOM_ROOT_UID, UID
+from hashlib import sha256
 
 os.environ["FFMPEG_BINARY"] = r"D:\Program Files\ffmpeg\bin\ffmpeg.exe"
 
@@ -50,17 +52,62 @@ def load_series_images(directory: Path):
 	return images
 
 
+def _save_dcms(images: list[np.array], directory: Path):
+	hasher, blobs = sha256(b"Kaciras DICOM Convertor"), []
+
+	for px in images:
+		buffer = px.tobytes()
+		hasher.update(buffer)
+		blobs.append(buffer)
+
+	hash = str(int.from_bytes(hasher.digest()))
+	prefix = PYDICOM_ROOT_UID + hash[:24].zfill(24)
+
+	for i, px in enumerate(images):
+		ds = Dataset()
+		ds.ensure_file_meta()
+
+		ds.SOPClassUID = SecondaryCaptureImageStorage
+		ds.SOPInstanceUID = UID(prefix + str(i))
+	
+		ds.BitsAllocated = 8
+		ds.BitsStored = 8
+		ds.HighBit = ds.BitsStored - 1
+		ds.PixelRepresentation = 0
+		ds.SamplesPerPixel = 1
+		ds.Rows = px.shape[0]
+		ds.Columns = px.shape[1]
+		ds.PixelData = blobs[i]
+
+		if px.shape[2] == 3:
+			ds.PhotometricInterpretation = "RGB"
+			ds.PlanarConfiguration = 0
+		else:
+			ds.PhotometricInterpretation = "MONOCHROME1"
+
+		ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+		ds.file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
+		ds.file_meta.MediaStorageSOPClassUID = ds.SOPClassUID
+
+		ds.save_as(directory / f"{i}.dcm", enforce_file_format=True)
+
+
 def save_images(images: list[np.array], directory: Path, ext = "png"):
 	directory.mkdir(exist_ok=True)
+
+	if ext == "dcm":
+		return _save_dcms(images, directory)
+
 	for i, px in enumerate(images):
 		Image.fromarray(px).save(directory / f"{i}.{ext}")
 
 
 if __name__ == "__main__":
-	image_dir = Path(r"D:\Coding\Python\cloud-dicom-downloader\download\75-CT202407010053\1mm, iDose (3).avi")
+	image_dir = Path(r"download\test.avi")
 	
 	# images = load_series_images(image_dir)
 	# images_to_video(images, image_dir.with_suffix(".avi"))
 
 	images = video_to_images(image_dir)
-	save_images(images, Path("exports"))
+	save_images(images, Path("exports"), "dcm")
+
