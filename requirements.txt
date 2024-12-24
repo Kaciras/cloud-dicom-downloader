@@ -2,5 +2,13 @@ tqdm~=4.67
 aiohttp~=3.11
 yarl~=1.18
 pydicom~=3.0
+moviepy~=2.1
+pylibjpeg~=2.0
 
+# pylibjpeg[all]
+pylibjpeg-libjpeg~=2.3
+pylibjpeg-openjpeg~=2.4
+pylibjpeg-rle~=2.0
+
+# Test dependencies
 pytest~=8.3
