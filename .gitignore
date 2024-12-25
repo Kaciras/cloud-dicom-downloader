@@ -27,4 +27,5 @@ htmlcov/
 # Working data
 /debug.py
 /download
+/exports
 /dump.zip
