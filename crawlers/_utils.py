@@ -1,3 +1,4 @@
+import math
 import random
 import re
 import sys
@@ -111,6 +112,24 @@ def make_unique_dir(path: Path):
 
 		alt += path.suffix
 		return make_unique_dir(path.parent / alt)
+
+
+class SeriesDirectory:
+	"""
+	封装了创建序列文件夹，以及计算影像文件名的操作，做了一些特殊处理：
+	1）防止序列目录名重复，自动添加编号后缀。
+	2）映像文件名填充 0 前缀，确保列出文件操作能返回正确的顺序。
+	"""
+
+	def __init__(self, study_dir: Path, name: str, size: int):
+		self.name = pathify(name)
+		self.path = make_unique_dir(study_dir / self.name)
+		self.width = int(math.log10(size)) + 1
+
+	def get_path(self, index: int, suffix: str):
+		base = f"{index + 1}{suffix}"
+		width = self.width + len(suffix)
+		return self.path / base.zfill(width)
 
 
 def parse_dcm_value(value: str, vr: str):

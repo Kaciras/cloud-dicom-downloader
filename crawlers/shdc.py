@@ -13,7 +13,7 @@ from urllib.parse import parse_qsl, urlencode
 from tqdm import tqdm
 from yarl import URL
 
-from crawlers._utils import new_http_client, pathify, make_unique_dir
+from crawlers._utils import new_http_client, pathify, SeriesDirectory
 
 TABLE_62 = string.digits + string.ascii_lowercase + string.ascii_uppercase
 
@@ -87,10 +87,11 @@ async def run(share_url: str):
 
 		for series in series_list["result"]:
 			desc = pathify(series["description"]) or "Unnamed"
-			dir_ = make_unique_dir(save_to / desc)
+			names = series["names"].split(",")
+			dir_ = SeriesDirectory(save_to, desc, len(names))
 
-			tasks = tqdm(series["names"].split(","), desc=desc, unit="张", file=sys.stdout)
-			for i, name in enumerate(tasks, 1):
+			tasks = tqdm(names, desc=desc, unit="张", file=sys.stdout)
+			for i, name in enumerate(tasks):
 				path = "/rawdata/indata/" + series["source_folder"] + "/" + name
 				headers = {
 					"Authorization": _get_auth(query, name),
@@ -99,4 +100,4 @@ async def run(share_url: str):
 
 				async with client.get(path, headers=headers) as response:
 					file = await response.read()
-					dir_.joinpath(f"{i}.dcm").write_bytes(file)
+					dir_.get_path(i, ".dcm").write_bytes(file)

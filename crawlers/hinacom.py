@@ -17,7 +17,7 @@ from pydicom.tag import Tag
 from pydicom.uid import ExplicitVRLittleEndian, JPEG2000Lossless
 from tqdm import tqdm
 
-from crawlers._utils import pathify, new_http_client, parse_dcm_value, make_unique_dir
+from crawlers._utils import pathify, new_http_client, parse_dcm_value, SeriesDirectory
 
 _LINK_VIEW = re.compile(r"/Study/ViewImage\?studyId=([\w-]+)")
 _LINK_ENTRY = re.compile(r"window\.location\.href = '([^']+)'")
@@ -86,10 +86,10 @@ class HinacomDownloader:
 
 		for series in self.dataset["displaySets"]:
 			name, images = pathify(series["description"]), series["images"]
-			dir_: Optional[Path] = None
+			dir_: Optional[SeriesDirectory] = None
 
 			tasks = tqdm(images, desc=name, unit="张", file=sys.stdout)
-			for i, info in enumerate(tasks, 1):
+			for i, info in enumerate(tasks):
 				# 图片响应头包含的标签不够，必须每个都请求 GetImageDicomTags。
 				tags = await self.get_tags(info)
 
@@ -99,10 +99,10 @@ class HinacomDownloader:
 
 				# 仅有图片时才创建目录，避免空文件夹。
 				if not dir_:
-					dir_ = make_unique_dir(save_to / name)
+					dir_ = SeriesDirectory(save_to, name, len(images))
 
 				pixels, _ = await self.get_image(info, is_raw)
-				_write_dicom(tags, pixels, dir_ / f"{i}.dcm")
+				_write_dicom(tags, pixels, dir_.get_path(i, ".dcm"))
 
 	@staticmethod
 	async def from_url(client: ClientSession, viewer_url: str):
@@ -227,15 +227,15 @@ async def fetch_responses(downloader: HinacomDownloader, save_to: Path, is_raw: 
 
 	for series in downloader.dataset["displaySets"]:
 		name, images = pathify(series["description"]), series["images"]
-		dir_ = make_unique_dir(save_to / name)
+		dir_ = SeriesDirectory(save_to, name, len(images))
 
 		tasks = tqdm(images, desc=name, unit="张", file=sys.stdout)
-		for i, info in enumerate(tasks, 1):
+		for i, info in enumerate(tasks):
 			tags = await downloader.get_tags(info)
 			pixels, attrs = await downloader.get_image(info, is_raw)
-			dir_.joinpath(f"{i}-tags.json").write_text(json.dumps(tags))
-			dir_.joinpath(f"{i}.json").write_text(attrs)
-			dir_.joinpath(f"{i}.slice").write_bytes(pixels)
+			dir_.get_path(i, "-tags.json").write_text(json.dumps(tags))
+			dir_.get_path(i, ".json").write_text(attrs)
+			dir_.get_path(i, ".slice").write_bytes(pixels)
 
 
 def build_dcm_from_responses(source_dir: Path):

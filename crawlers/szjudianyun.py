@@ -15,7 +15,7 @@ from pydicom import dcmread
 from tqdm import trange
 from yarl import URL
 
-from crawlers._utils import new_http_client, pathify, make_unique_dir
+from crawlers._utils import new_http_client, SeriesDirectory
 
 separator = "b1u2d3d4h5a"
 
@@ -40,7 +40,7 @@ async def _get_dcm(ws, hospital_id, study, series, instance):
 		ww="",
 		wl="",
 		series=series,
-		series_in=str(instance)
+		series_in=str(instance + 1)
 	)
 
 	# 451 开头的回复消息，没什么用。
@@ -61,20 +61,20 @@ async def download_study(ws: ClientWebSocketResponse, info):
 		if sid.startswith("dfyfilm"):  # 最后会有一张非 DICOM 图片。
 			continue
 
-		progress = trange(1, sizes[sid] + 1, unit="张", file=sys.stdout)
-		directory: Optional[Path] = None
+		progress = trange(sizes[sid], unit="张", file=sys.stdout)
+		dir_: Optional[SeriesDirectory] = None
 
 		for i in progress:
 			data = await _get_dcm(ws, hospital_id, study, sid, i)
 
-			if not directory:
+			if not dir_:
 				dicom_file = dcmread(BytesIO(data))
 				desc = dicom_file.SeriesDescription or sid
 
-				directory = make_unique_dir(save_dir / pathify(desc))
+				dir_ = SeriesDirectory(save_dir, desc, sizes[sid])
 				progress.set_description(desc)
 
-			directory.joinpath(f"{i}.dcm").write_bytes(data)
+			dir_.get_path(i, ".dcm").write_bytes(data)
 
 
 async def run(url):
