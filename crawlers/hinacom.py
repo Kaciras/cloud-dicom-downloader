@@ -99,7 +99,7 @@ class HinacomDownloader:
 
 				# 仅有图片时才创建目录，避免空文件夹。
 				if not dir_:
-					dir_ = SeriesDirectory(save_to, name, len(images))
+					dir_ = SeriesDirectory(save_to / name, len(images))
 
 				pixels, _ = await self.get_image(info, is_raw)
 				_write_dicom(tags, pixels, dir_.get_path(i, ".dcm"))

@@ -39,24 +39,27 @@ async def test_response_dumping():
 		assert Path("dump.zip").exists()
 	finally:
 		await runner.cleanup()
-		Path("dump.zip").unlink()
+		Path("dump.zip").unlink(missing_ok=True)
 
 
 def test_make_unique_dir():
 	path = Path("download/__test_dir")
 	created = make_unique_dir(path)
-
-	assert created.is_dir()
-	assert created == path
-	created.rmdir()
+	try:
+		assert created.is_dir()
+		assert created == path
+	finally:
+		created.rmdir()
 
 
 def test_make_unique_dir_2():
-	path = Path("download/__test_dir (1)")
-	path.mkdir(parents=True)
-	created = make_unique_dir(path)
+	already_exists = Path("download/__test_dir (1)")
+	already_exists.mkdir(parents=True)
+	try:
+		created = make_unique_dir(already_exists)
 
-	assert created.is_dir()
-	assert created == Path("download/__test_dir (2)")
-	path.rmdir()
-	created.rmdir()
+		assert created.is_dir()
+		assert created == Path("download/__test_dir (2)")
+		created.rmdir()
+	finally:
+		already_exists.rmdir()

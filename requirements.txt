@@ -4,6 +4,7 @@ tqdm~=4.67
 yarl~=1.18
 pydicom~=3.0
 pylibjpeg~=2.0
+numpy~=2.2
 moviepy~=2.1
 
 # pylibjpeg[all]

@@ -32,6 +32,9 @@ class SeriesImageList:
 
 	@staticmethod
 	def from_video(file: Path, sample_fps=None):
+		# moviepy 文件不存在的报错有点怪，还是自己检查吧。
+		if not file.is_file():
+			raise FileNotFoundError(file)
 		frames = VideoFileClip(file).iter_frames(sample_fps)
 		return SeriesImageList(file.name, list(frames))
 

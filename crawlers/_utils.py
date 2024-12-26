@@ -121,9 +121,8 @@ class SeriesDirectory:
 	2）映像文件名填充 0 前缀，确保列出文件操作能返回正确的顺序。
 	"""
 
-	def __init__(self, study_dir: Path, name: str, size: int):
-		self.name = pathify(name)
-		self.path = make_unique_dir(study_dir / self.name)
+	def __init__(self, path: Path, size: int):
+		self.path = make_unique_dir(path)
 		self.width = int(math.log10(size)) + 1
 
 	def get_path(self, index: int, suffix: str):
