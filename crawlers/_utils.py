@@ -117,18 +117,30 @@ def make_unique_dir(path: Path):
 class SeriesDirectory:
 	"""
 	封装了创建序列文件夹，以及计算影像文件名的操作，做了一些特殊处理：
-	1）防止序列目录名重复，自动添加编号后缀。
-	2）映像文件名填充 0 前缀，确保列出文件操作能返回正确的顺序。
+
+	- 防止序列目录名重复，自动添加编号后缀。
+	- 映像文件名填充 0 前缀，确保列出文件操作能返回正确的顺序。
 	"""
 
-	def __init__(self, path: Path, size: int):
-		self.path = make_unique_dir(path)
-		self.width = int(math.log10(size)) + 1
+	def __init__(self, path: Path, size: int, unique=True):
+		self._suggested = path
+		self._unique = unique
+		self._path = None
+		self._width = int(math.log10(size)) + 2
 
-	def get_path(self, index: int, suffix: str):
-		base = f"{index + 1}{suffix}"
-		width = self.width + len(suffix)
-		return self.path / base.zfill(width)
+	def make_dir(self):
+		if self._unique:
+			self._path = make_unique_dir(self._suggested)
+		else:
+			self._path = self._suggested
+			self._path.mkdir(exist_ok=True)
+
+	def get(self, index: int, extension: str):
+		if not self._path:
+			self.make_dir()
+		base = f"{index + 1}.{extension}"
+		width = self._width + len(extension)
+		return self._path / base.zfill(width)
 
 
 def parse_dcm_value(value: str, vr: str):

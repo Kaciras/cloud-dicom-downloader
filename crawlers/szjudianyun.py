@@ -67,6 +67,7 @@ async def download_study(ws: ClientWebSocketResponse, info):
 		for i in progress:
 			data = await _get_dcm(ws, hospital_id, study, sid, i)
 
+			# 只有先读取一个影像才能确定序列目录的名字。
 			if not dir_:
 				dicom_file = dcmread(BytesIO(data))
 				desc = dicom_file.SeriesDescription or sid
@@ -75,7 +76,7 @@ async def download_study(ws: ClientWebSocketResponse, info):
 				dir_ = SeriesDirectory(save_dir / desc, sizes[sid])
 				progress.set_description(desc)
 
-			dir_.get_path(i, ".dcm").write_bytes(data)
+			dir_.get(i, "dcm").write_bytes(data)
 
 
 async def run(url):

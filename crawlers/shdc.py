@@ -100,4 +100,4 @@ async def run(share_url: str):
 
 				async with client.get(path, headers=headers) as response:
 					file = await response.read()
-					dir_.get_path(i, ".dcm").write_bytes(file)
+					dir_.get(i, "dcm").write_bytes(file)

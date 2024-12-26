@@ -7,7 +7,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from aiohttp import ClientSession
 from pydicom.datadict import DicomDictionary
@@ -86,7 +86,7 @@ class HinacomDownloader:
 
 		for series in self.dataset["displaySets"]:
 			name, images = pathify(series["description"]), series["images"]
-			dir_: Optional[SeriesDirectory] = None
+			dir_ = SeriesDirectory(save_to / name, len(images))
 
 			tasks = tqdm(images, desc=name, unit="张", file=sys.stdout)
 			for i, info in enumerate(tasks):
@@ -97,12 +97,8 @@ class HinacomDownloader:
 				if len(tags) == 0:
 					continue
 
-				# 仅有图片时才创建目录，避免空文件夹。
-				if not dir_:
-					dir_ = SeriesDirectory(save_to / name, len(images))
-
 				pixels, _ = await self.get_image(info, is_raw)
-				_write_dicom(tags, pixels, dir_.get_path(i, ".dcm"))
+				_write_dicom(tags, pixels, dir_.get(i, ".dcm"))
 
 	@staticmethod
 	async def from_url(client: ClientSession, viewer_url: str):
@@ -227,15 +223,15 @@ async def fetch_responses(downloader: HinacomDownloader, save_to: Path, is_raw: 
 
 	for series in downloader.dataset["displaySets"]:
 		name, images = pathify(series["description"]), series["images"]
-		dir_ = SeriesDirectory(save_to, name, len(images))
+		dir_ = SeriesDirectory(save_to / name, len(images))
 
 		tasks = tqdm(images, desc=name, unit="张", file=sys.stdout)
 		for i, info in enumerate(tasks):
 			tags = await downloader.get_tags(info)
 			pixels, attrs = await downloader.get_image(info, is_raw)
-			dir_.get_path(i, "-tags.json").write_text(json.dumps(tags))
-			dir_.get_path(i, ".json").write_text(attrs)
-			dir_.get_path(i, ".slice").write_bytes(pixels)
+			dir_.get(i, "tags.json").write_text(json.dumps(tags))
+			dir_.get(i, "json").write_text(attrs)
+			dir_.get(i, "slice").write_bytes(pixels)
 
 
 def build_dcm_from_responses(source_dir: Path):
