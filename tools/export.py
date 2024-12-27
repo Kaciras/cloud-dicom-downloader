@@ -1,7 +1,5 @@
-"""
-DCM 文件转换工具，支持 DCM 文件、图片和视频之间的转换。
-"""
 import os
+import re
 from hashlib import sha256
 from pathlib import Path
 
@@ -9,7 +7,9 @@ import numpy as np
 from PIL import Image
 from moviepy import ImageClip, VideoFileClip, concatenate_videoclips
 from pydicom import dcmread, pixels, Dataset
-from pydicom.uid import ExplicitVRLittleEndian, SecondaryCaptureImageStorage, PYDICOM_ROOT_UID
+from pydicom.uid import ExplicitVRLittleEndian, SecondaryCaptureImageStorage, PYDICOM_ROOT_UID, generate_uid
+
+from crawlers._utils import SeriesDirectory
 
 # moviepy 里头调用 ffmpeg 命令行工具，不指定路径的话也会自动下载一个。
 os.environ["FFMPEG_BINARY"] = r"D:\Program Files\ffmpeg\bin\ffmpeg.exe"
@@ -20,7 +20,8 @@ FPS = 10
 
 class SeriesImageList:
 	"""
-
+	DICOM 文件转换工具，支持 DCM 文件、图片、视频三者之间的转换。
+	用法是先 from_* 读取，然后 to_* 输出即可。
 	"""
 
 	name: str
@@ -77,30 +78,32 @@ class SeriesImageList:
 		else:
 			video.write_videofile(out_file, codec="png", fps=FPS)
 
-	def to_pictures(self, directory: Path, ext="png"):
-		directory.mkdir(exist_ok=True)
+	def to_pictures(self, save_to: Path, ext="png"):
+		out_dir = SeriesDirectory(save_to, len(self.images), False)
 		for i, px in enumerate(self.images):
-			Image.fromarray(px).save(directory / f"{i}.{ext}")
+			Image.fromarray(px).save(out_dir.get(i, ext))
 
-	def to_dcm_files(self, directory: Path):
+	def to_dcm_files(self, save_to: Path, entropy=None):
 		hasher, blobs = sha256(b"Kaciras DICOM Convertor"), []
+		out_dir = SeriesDirectory(save_to, len(blobs), False)
 
 		for px in self.images:
 			buffer = px.tobytes()
-			hasher.update(buffer)
 			blobs.append(buffer)
+			hasher.update(buffer)
 
 		h64 = str(int.from_bytes(hasher.digest()))
-		prefix = PYDICOM_ROOT_UID + h64[:24].zfill(24)
+		study_uid = generate_uid(entropy_srcs=[entropy] if entropy else None)
+		series_uid = PYDICOM_ROOT_UID + h64.zfill(32)
 
 		for i, px in enumerate(self.images):
 			ds = Dataset()
 			ds.ensure_file_meta()
 
 			ds.SOPClassUID = SecondaryCaptureImageStorage
-			ds.SOPInstanceUID = prefix + str(i)
-			ds.StudyInstanceUID = "1.2.3.4"
-			ds.SeriesInstanceUID = "3.23.53.4666"
+			ds.StudyInstanceUID = study_uid
+			ds.SeriesInstanceUID = series_uid
+			ds.SOPInstanceUID = series_uid[:50] + str(i)
 
 			ds.BitsAllocated = 8
 			ds.BitsStored = 8
@@ -122,4 +125,4 @@ class SeriesImageList:
 			ds.file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
 			ds.file_meta.MediaStorageSOPClassUID = ds.SOPClassUID
 
-			ds.save_as(directory / f"{i}.dcm", enforce_file_format=True)
+			ds.save_as(out_dir.get(i, "dcm"), enforce_file_format=True)
