@@ -58,7 +58,3 @@ URL 格式：`https://mdmis.cq12320.cn/wcs1/mdmis-app/h5/#/share/detail?share_id
 ```
 python downloader.py <url>
 ```
-
-## 开发
-
-由于爬虫无法只靠本机调试，如有问题请提 Issue 或发送邮件到 [contact@kaciras.com](mailto:contact@kaciras.com)，附带报告的地址和密码（如果有），报告不会被用于开发本项目之外的目的。
