@@ -8,6 +8,7 @@ from PIL import Image
 from moviepy import ImageClip, VideoFileClip, concatenate_videoclips
 from pydicom import dcmread, pixels, Dataset
 from pydicom.uid import ExplicitVRLittleEndian, SecondaryCaptureImageStorage, PYDICOM_ROOT_UID, generate_uid
+from tqdm import tqdm
 
 from crawlers._utils import SeriesDirectory
 
@@ -16,6 +17,23 @@ os.environ["FFMPEG_BINARY"] = r"D:\Program Files\ffmpeg\bin\ffmpeg.exe"
 
 OUTPUT_DIR = Path("exports")
 FPS = 10
+DIGITS_RE = re.compile(r"\d+")
+
+
+def _try_sort_numeric(values: list[Path]):
+	"""
+	尝试从文件名中找出数字，并按其排序，避免文件系统返回错误的顺序。
+
+	:return: 如果有一个文件名中没数字则原样返回，否则返回排序后的列表。
+	"""
+	tuples = []
+	for value in values:
+		match = DIGITS_RE.search(value.name)
+		if not match:
+			return values
+		tuples.append((int(match.group(0)), value))
+	tuples.sort()
+	return list(second for _, second in tuples)
 
 
 class SeriesImageList:
@@ -43,7 +61,7 @@ class SeriesImageList:
 	def from_pictures(name: str, files: list[Path]):
 		images = [None] * len(files)
 
-		for i, file in enumerate(files):
+		for i, file in enumerate(_try_sort_numeric(files)):
 			image = Image.open(file)
 			images[i] = np.asarray(image)
 
@@ -52,11 +70,12 @@ class SeriesImageList:
 	@staticmethod
 	def from_dcm_files(name: str, files: list[Path]):
 		images = [None] * len(files)
+		files = _try_sort_numeric(files)
 
 		# https://github.com/ykuo2/dicom2jpg/blob/main/dicom2jpg/utils.py
-		for i, file in enumerate(files):
+		for file in tqdm(files, "Loading"):
 			ds = dcmread(file)
-			i, px = ds.InstanceNumber, ds.pixel_array
+			k, px = ds.InstanceNumber, ds.pixel_array
 
 			px = pixels.apply_modality_lut(px, ds)
 			px = pixels.apply_voi_lut(px, ds)
@@ -65,7 +84,7 @@ class SeriesImageList:
 			min_ = px.min()
 			px = (px - min_) / (px.max() - min_) * 255
 
-			images[i - 1] = px.astype(np.uint8)
+			images[k - 1] = px.astype(np.uint8)
 
 		return SeriesImageList(name, images)
 
