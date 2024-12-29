@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 from moviepy import ImageClip, VideoFileClip, concatenate_videoclips
+from proglog import TqdmProgressBarLogger
 from pydicom import dcmread, pixels, Dataset
 from pydicom.uid import ExplicitVRLittleEndian, SecondaryCaptureImageStorage, PYDICOM_ROOT_UID, generate_uid
 from tqdm import tqdm
@@ -14,6 +15,7 @@ from crawlers._utils import SeriesDirectory
 
 # moviepy 里头调用 ffmpeg 命令行工具，不指定路径的话也会自动下载一个。
 os.environ["FFMPEG_BINARY"] = r"D:\Program Files\ffmpeg\bin\ffmpeg.exe"
+moviepy_logger = TqdmProgressBarLogger(print_messages=False)
 
 OUTPUT_DIR = Path("exports")
 FPS = 10
@@ -37,12 +39,15 @@ def _try_sort_numeric(values: list[Path]):
 
 
 def _get_slice_position(ds):
-	orientation = np.array(ds.ImageOrientationPatient).reshape(2, 3)
-	position = np.array(ds.ImagePositionPatient)
+	"""
+	通过 ImagePositionPatient 和 ImageOrientationPatient 计算切面在扫描轴上的位置。
+	原理就是对切面的三个坐标应用矩阵变换，结果等于 SliceLocation，但后者是可选标签不一定有。
 
-	# Calculate the normal vector to the imaging plane
-	normal_vector = np.cross(orientation[0], orientation[1])
-	return np.dot(normal_vector, position)
+	https://stackoverflow.com/a/6598664/7065321
+	"""
+	position = np.array(ds.ImagePositionPatient)
+	row, col = np.array(ds.ImageOrientationPatient).reshape(2, 3)
+	return np.dot(np.cross(row, col), position)
 
 
 class SeriesImageList:
@@ -78,16 +83,13 @@ class SeriesImageList:
 
 	@staticmethod
 	def from_dcm_files(name: str, files: list[Path]):
-		images = [None] * len(files)
+		images = []
 		datasets = [dcmread(x) for x in files]
-
 		datasets.sort(key=_get_slice_position)
-
 
 		# https://github.com/ykuo2/dicom2jpg/blob/main/dicom2jpg/utils.py
 		for ds in tqdm(datasets, "Loading"):
-			k, px = ds.InstanceNumber, ds.pixel_array
-
+			px = ds.pixel_array
 			px = pixels.apply_modality_lut(px, ds)
 			px = pixels.apply_voi_lut(px, ds)
 			px = pixels.apply_presentation_lut(px, ds)
@@ -95,18 +97,15 @@ class SeriesImageList:
 			min_ = px.min()
 			px = (px - min_) / (px.max() - min_) * 255
 
-			images[k - 1] = px.astype(np.uint8)
+			images.append(px.astype(np.uint8))
 
 		return SeriesImageList(name, images)
 
 	def to_video(self, out_file: Path):
 		clips = [ImageClip(x, duration=1 / FPS) for x in self.images]
 		video = concatenate_videoclips(clips, method="compose")
-
-		if out_file.suffix != ".avi":
-			video.write_videofile(out_file, fps=FPS)
-		else:
-			video.write_videofile(out_file, codec="png", fps=FPS)
+		codec = "png" if out_file.suffix == ".avi" else None
+		video.write_videofile(out_file, codec=codec, fps=FPS, logger=moviepy_logger)
 
 	def to_pictures(self, save_to: Path, ext="png"):
 		out_dir = SeriesDirectory(save_to, len(self.images), False)
