@@ -50,18 +50,11 @@ def _get_slice_position(ds):
 	return np.dot(np.cross(row, col), position)
 
 
-class SeriesImageList:
+class SeriesImageList(list[np.ndarray]):
 	"""
 	DICOM 文件转换工具，支持 DCM 文件、图片、视频三者之间的转换。
 	用法是先 from_* 读取，然后 to_* 输出即可。
 	"""
-
-	name: str
-	images: list[np.ndarray]
-
-	def __init__(self, name: str, images: list[np.ndarray]):
-		self.name = name
-		self.images = images
 
 	@staticmethod
 	def from_video(file: Path, sample_fps=None):
@@ -69,21 +62,16 @@ class SeriesImageList:
 		if not file.is_file():
 			raise FileNotFoundError(file)
 		frames = VideoFileClip(file).iter_frames(sample_fps)
-		return SeriesImageList(file.name, list(frames))
+		return SeriesImageList(frames)
 
 	@staticmethod
-	def from_pictures(name: str, files: list[Path]):
-		images = [None] * len(files)
-
-		for i, file in enumerate(_try_sort_numeric(files)):
-			image = Image.open(file)
-			images[i] = np.asarray(image)
-
-		return SeriesImageList(name, images)
+	def from_pictures(files: list[Path]):
+		files = _try_sort_numeric(files)
+		return SeriesImageList(np.asarray(Image.open(file)) for file in files)
 
 	@staticmethod
-	def from_dcm_files(name: str, files: list[Path]):
-		images = []
+	def from_dcm_files(files: list[Path]):
+		images = SeriesImageList()
 		datasets = [dcmread(x) for x in files]
 		datasets.sort(key=_get_slice_position)
 
@@ -99,24 +87,24 @@ class SeriesImageList:
 
 			images.append(px.astype(np.uint8))
 
-		return SeriesImageList(name, images)
+		return images
 
 	def to_video(self, out_file: Path):
-		clips = [ImageClip(x, duration=1 / FPS) for x in self.images]
+		clips = [ImageClip(x, duration=1 / FPS) for x in self]
 		video = concatenate_videoclips(clips, method="compose")
 		codec = "png" if out_file.suffix == ".avi" else None
 		video.write_videofile(out_file, codec=codec, fps=FPS, logger=moviepy_logger)
 
 	def to_pictures(self, save_to: Path, ext="png"):
-		out_dir = SeriesDirectory(save_to, len(self.images), False)
-		for i, px in enumerate(self.images):
+		out_dir = SeriesDirectory(save_to, len(self), False)
+		for i, px in enumerate(self):
 			Image.fromarray(px).save(out_dir.get(i, ext))
 
 	def to_dcm_files(self, save_to: Path, entropy=None):
 		hasher, blobs = sha256(b"Kaciras DICOM Convertor"), []
 		out_dir = SeriesDirectory(save_to, len(blobs), False)
 
-		for px in self.images:
+		for px in self:
 			buffer = px.tobytes()
 			blobs.append(buffer)
 			hasher.update(buffer)
@@ -125,7 +113,7 @@ class SeriesImageList:
 		study_uid = generate_uid(entropy_srcs=[entropy] if entropy else None)
 		series_uid = PYDICOM_ROOT_UID + h64.zfill(32)
 
-		for i, px in enumerate(self.images):
+		for i, px in enumerate(self):
 			ds = Dataset()
 			ds.ensure_file_meta()
 
@@ -155,3 +143,4 @@ class SeriesImageList:
 			ds.file_meta.MediaStorageSOPClassUID = ds.SOPClassUID
 
 			ds.save_as(out_dir.get(i, "dcm"), enforce_file_format=True)
+
