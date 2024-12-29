@@ -36,6 +36,15 @@ def _try_sort_numeric(values: list[Path]):
 	return list(second for _, second in tuples)
 
 
+def _get_slice_position(ds):
+	orientation = np.array(ds.ImageOrientationPatient).reshape(2, 3)
+	position = np.array(ds.ImagePositionPatient)
+
+	# Calculate the normal vector to the imaging plane
+	normal_vector = np.cross(orientation[0], orientation[1])
+	return np.dot(normal_vector, position)
+
+
 class SeriesImageList:
 	"""
 	DICOM 文件转换工具，支持 DCM 文件、图片、视频三者之间的转换。
@@ -70,11 +79,13 @@ class SeriesImageList:
 	@staticmethod
 	def from_dcm_files(name: str, files: list[Path]):
 		images = [None] * len(files)
-		files = _try_sort_numeric(files)
+		datasets = [dcmread(x) for x in files]
+
+		datasets.sort(key=_get_slice_position)
+
 
 		# https://github.com/ykuo2/dicom2jpg/blob/main/dicom2jpg/utils.py
-		for file in tqdm(files, "Loading"):
-			ds = dcmread(file)
+		for ds in tqdm(datasets, "Loading"):
 			k, px = ds.InstanceNumber, ds.pixel_array
 
 			px = pixels.apply_modality_lut(px, ds)
