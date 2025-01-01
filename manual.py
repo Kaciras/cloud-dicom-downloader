@@ -150,18 +150,33 @@ class HTTPDumpFile:
 
 
 async def run(playwright: Playwright):
-	chromium = playwright.chromium  # or "firefox" or "webkit".
-	browser = await chromium.launch(
+	browser = await playwright.chromium.launch(
 		executable_path=r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
 		headless=False,
 	)
-	page = await browser.new_page()
-	page.context.on("response", dump)
-	await page.goto("https://www.cnblogs.com/hez2010")
-	await page.context.wait_for_event("close")
+
+	context = await browser.new_context()
+	waiter = asyncio.Event()
+
+	# 关闭浏览器窗口并不结束浏览器进程，只能依靠页面计数来判断。
+	# https://github.com/microsoft/playwright/issues/2946
+	def check_all_closed():
+		if len(context.pages) == 0:
+			waiter.set()
+
+	context.on("page", lambda p: p.on("close", check_all_closed))
+
+	page = await context.new_page()
+	context.on("response", dump_http)
+	page.on("websocket", dump_websocket)
+
+	await page.goto("https://tieba.baidu.com/index.html", wait_until="commit")
+
+	await waiter.wait()
+	await browser.close()
 
 
-async def main():
+async def dump_network():
 	shutil.rmtree(_DUMP_FILE_STORE, True)
 	_DUMP_FILE_STORE.mkdir(parents=True)
 
@@ -196,5 +211,5 @@ async def inspect():
 				print(file)
 
 
-asyncio.run(inspect())
-# asyncio.run(main())
+# asyncio.run(inspect())
+asyncio.run(dump_network())
