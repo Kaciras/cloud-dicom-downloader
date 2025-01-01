@@ -1,10 +1,10 @@
 import asyncio
-import io
 from dataclasses import dataclass
 from io import TextIOWrapper
 from pathlib import Path
+from typing import BinaryIO
 
-from playwright.async_api import Playwright, Response
+from playwright.async_api import Playwright, Response, async_playwright
 from yarl import URL
 
 index = 0
@@ -28,8 +28,11 @@ async def dump(directory: Path, response: Response):
 
 		# 这里第一行直接用了 URL 而非标准中的 Path
 		writer.write(f"{request.method} {request.url} HTTP1/1")
+
+		# all_headers 返回报文层面的数据，需要滤掉 HTTP2 的特殊头。
 		for k, v in (await request.all_headers()).items():
-			writer.write(f"\r\n{k}: {v}")
+			if k[0] != ":":
+				writer.write(f"\r\n{k}: {v}")
 
 		fp.write(b"\r\n\r\n")
 		writer.write(f"HTTP1/1 {response.status} {response.status_text}")
@@ -73,31 +76,37 @@ class HTTPNetworkDumpFile:
 			return fp.read()
 
 
+def _next_line(fp: BinaryIO):
+	"""
+
+	"""
+	return fp.readline()[:-2].decode("utf-8")
+
+
 def deserialize(dump_file: Path):
 	with dump_file.open("rb") as fp:
-		reader = io.TextIOWrapper(fp, encoding="utf-8", newline="\r\n")
-		qbs = int(reader.readline().rstrip("\r\n")[len(_DUMP_FILE_COMMENT):])
+		x = _next_line(fp)
+		qbs = int(x[len(_DUMP_FILE_COMMENT):])
 
-		m, u, _ = reader.readline().rstrip("\r\n").split(" ", 2)
+		m, u, _ = _next_line(fp).split(" ", 2)
 		qh: dict[str, str] = {}
 		while True:
-			header = reader.readline().rstrip("\r\n")
+			header = _next_line(fp)
 			if not header:
 				break
 			k, v = header.split(":", 1)
 			qh[k] = v
 
-		_, s, reason = reader.readline().rstrip("\r\n").split(" ", 2)
+		_, s, reason = _next_line(fp).split(" ", 2)
 		rh: dict[str, str] = {}
 		while True:
-			header = reader.readline().rstrip("\r\n")
+			header = _next_line(fp)
 			if not header:
 				break
 			k, v = header.split(":", 1)
 			rh[k] = v
 
-		# 不能用 fp.tell 因为 TextIOWrapper 有缓冲，正好除请求体外都是文本。
-		ho = reader.tell()
+		ho = fp.tell()
 
 	return HTTPNetworkDumpFile(ho, qbs, dump_file, m, URL(u), qh, int(s), rh)
 
@@ -110,7 +119,7 @@ async def run(playwright: Playwright):
 	)
 	page = await browser.new_page()
 	page.context.on("response", intercept)
-	await page.goto("https://tieba.baidu.com/index.html")
+	await page.goto("https://www.cnblogs.com/hez2010")
 	# other actions...
 	await browser.close()
 
@@ -120,11 +129,16 @@ async def intercept(response: Response):
 
 
 async def main():
-	# async with async_playwright() as playwright:
-	# 	await run(playwright)
+	async with async_playwright() as playwright:
+		await run(playwright)
 
-	gg = deserialize(Path("exports/2.http"))
-	print(gg.response_body())
+	# gg = deserialize(Path("exports/2.http"))
+	# print(gg.response_body())
+
+	# for file in Path("exports").iterdir():
+	# 	exchange = deserialize(file)
+	# 	if exchange.method == "POST":
+	# 		print(file)
 
 
 Path("exports").mkdir(exist_ok=True)
