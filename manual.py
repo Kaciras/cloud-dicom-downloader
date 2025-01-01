@@ -5,7 +5,7 @@ from io import TextIOWrapper
 from pathlib import Path
 from typing import BinaryIO
 
-from playwright.async_api import Playwright, Response, async_playwright
+from playwright.async_api import Playwright, Response, async_playwright, BrowserContext, WebSocket
 from yarl import URL
 
 _DUMP_FILE_STORE = Path("download/dumps")
@@ -13,8 +13,38 @@ _DUMP_FILE_COMMENT = "# HTTP dump file, request body size = "
 
 index = 0
 
+async def dump_websocket(ws: WebSocket):
+	global index
+	index += 1
 
-async def dump(response: Response):
+	fp = _DUMP_FILE_STORE.joinpath(F"{index}.ws").open("wb")
+
+	def write_data(method, data: str | bytes):
+		fp.write(method)
+		if isinstance(data, bytes):
+			fp.write(F":bytes:{len(data)}\n".encode())
+			fp.write(data)
+		else:
+			fp.write(F":str:{len(data)}\n".encode())
+			fp.write(data.encode())
+		fp.write(b"\n\n")
+
+	def handle_sent(data: str | bytes):
+		write_data(b"sent", data)
+
+	def handle_received(data: str | bytes):
+		write_data(b"received", data)
+
+	def ccc(_):
+		fp.close()
+		print("websocket closing...")
+
+	ws.on("close",ccc)
+	ws.on("framesent", handle_sent)
+	ws.on("framereceived", handle_received)
+
+
+async def dump_http(response: Response):
 	global index
 	index += 1
 	request = response.request
@@ -138,13 +168,33 @@ async def main():
 	async with async_playwright() as playwright:
 		await run(playwright)
 
-	# gg = deserialize(Path("exports/2.http"))
-	# print(gg.response_body())
 
-	for file in Path("exports").iterdir():
-		exchange = HTTPDumpFile.read_from(file)
-		if exchange.method == "POST":
-			print(file)
+def deserialize_ws(dump_file: Path):
+	frames = []
+	with dump_file.open("rb") as fp:
+		while True:
+			line = fp.readline()
+			if not line:
+				return frames
+			method, type_, size = line.split(b":")
+			is_sent = method == b"sent"
+			data = fp.read(int(size))
+			if type_ == b"str":
+				data = data.decode()
+			fp.read(2)
+			frames.append((is_sent, data))
 
 
-asyncio.run(main())
+async def inspect():
+	for file in _DUMP_FILE_STORE.iterdir():
+		if file.suffix == ".ws":
+			frames = deserialize_ws(file)
+			print(len(frames))
+		else:
+			exchange = HTTPDumpFile.read_from(file)
+			if exchange.method == "POST":
+				print(file)
+
+
+asyncio.run(inspect())
+# asyncio.run(main())
