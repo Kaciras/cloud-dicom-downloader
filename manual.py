@@ -46,10 +46,27 @@ async def dump(directory: Path, response: Response):
 		fp.write(await response.body())
 
 
-@dataclass(eq=False, slots=True)
-class HTTPNetworkDumpFile:
+def _next_line(fp: BinaryIO):
 	"""
+	TextIO 对 \r\n 的处理很垃圾，不自动去掉 \r，还得自己处理。
+	"""
+	return fp.readline()[:-2].decode("utf-8")
 
+
+def _read_headers(fp: BinaryIO):
+	headers = {}
+	while True:
+		line = _next_line(fp)
+		if not line:
+			return headers
+		k, v = line.split(":", 1)
+		headers[k] = v
+
+
+@dataclass(slots=True, eq=False, repr=False)
+class HTTPDumpFile:
+	"""
+	转储的 HTTP 文件，在同一个文件里同时包含了请求和响应。
 	"""
 
 	_headers_end: int
@@ -75,40 +92,23 @@ class HTTPNetworkDumpFile:
 			fp.seek(skip)
 			return fp.read()
 
+	@staticmethod
+	def read_from(dump_file: Path):
+		with dump_file.open("rb") as fp:
+			request_body_size = int(_next_line(fp)[len(_DUMP_FILE_COMMENT):])
 
-def _next_line(fp: BinaryIO):
-	"""
+			method, url, _ = _next_line(fp).split(" ", 2)
+			request_headers = _read_headers(fp)
 
-	"""
-	return fp.readline()[:-2].decode("utf-8")
+			_, status, reason = _next_line(fp).split(" ", 2)
+			response_headers = _read_headers(fp)
 
+			body_offset = fp.tell()
 
-def deserialize(dump_file: Path):
-	with dump_file.open("rb") as fp:
-		x = _next_line(fp)
-		qbs = int(x[len(_DUMP_FILE_COMMENT):])
-
-		m, u, _ = _next_line(fp).split(" ", 2)
-		qh: dict[str, str] = {}
-		while True:
-			header = _next_line(fp)
-			if not header:
-				break
-			k, v = header.split(":", 1)
-			qh[k] = v
-
-		_, s, reason = _next_line(fp).split(" ", 2)
-		rh: dict[str, str] = {}
-		while True:
-			header = _next_line(fp)
-			if not header:
-				break
-			k, v = header.split(":", 1)
-			rh[k] = v
-
-		ho = fp.tell()
-
-	return HTTPNetworkDumpFile(ho, qbs, dump_file, m, URL(u), qh, int(s), rh)
+		return HTTPDumpFile(
+			body_offset, request_body_size, dump_file, method,
+			URL(url), request_headers, int(status), response_headers
+		)
 
 
 async def run(playwright: Playwright):
@@ -135,10 +135,10 @@ async def main():
 	# gg = deserialize(Path("exports/2.http"))
 	# print(gg.response_body())
 
-	# for file in Path("exports").iterdir():
-	# 	exchange = deserialize(file)
-	# 	if exchange.method == "POST":
-	# 		print(file)
+	for file in Path("exports").iterdir():
+		exchange = HTTPDumpFile.read_from(file)
+		if exchange.method == "POST":
+			print(file)
 
 
 Path("exports").mkdir(exist_ok=True)
