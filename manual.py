@@ -1,4 +1,5 @@
 import asyncio
+import shutil
 from dataclasses import dataclass
 from io import TextIOWrapper
 from pathlib import Path
@@ -7,12 +8,13 @@ from typing import BinaryIO
 from playwright.async_api import Playwright, Response, async_playwright
 from yarl import URL
 
-index = 0
-
+_DUMP_FILE_STORE = Path("download/dumps")
 _DUMP_FILE_COMMENT = "# HTTP dump file, request body size = "
 
+index = 0
 
-async def dump(directory: Path, response: Response):
+
+async def dump(response: Response):
 	global index
 	index += 1
 	request = response.request
@@ -22,7 +24,7 @@ async def dump(directory: Path, response: Response):
 	else:
 		req_body_size = 0
 
-	with directory.joinpath(F"{index}.http").open("wb") as fp:
+	with _DUMP_FILE_STORE.joinpath(F"{index}.http").open("wb") as fp:
 		writer = TextIOWrapper(fp, encoding="utf-8", newline="", write_through=True)
 		writer.write(F"{_DUMP_FILE_COMMENT}{req_body_size}\r\n")
 
@@ -43,7 +45,13 @@ async def dump(directory: Path, response: Response):
 		if request.post_data_buffer:
 			fp.write(request.post_data_buffer)
 
-		fp.write(await response.body())
+		# 浏览器对 204 No Content 响应可能跳过响应体。
+		if response.status == 204:
+			return
+
+		# Response body is unavailable for redirect responses
+		if response.status < 300 or response.status >= 400:
+			fp.write(await response.body())
 
 
 def _next_line(fp: BinaryIO):
@@ -118,17 +126,15 @@ async def run(playwright: Playwright):
 		headless=False,
 	)
 	page = await browser.new_page()
-	page.context.on("response", intercept)
+	page.context.on("response", dump)
 	await page.goto("https://www.cnblogs.com/hez2010")
-	# other actions...
-	await browser.close()
-
-
-async def intercept(response: Response):
-	await dump(Path("exports"), response)
+	await page.context.wait_for_event("close")
 
 
 async def main():
+	shutil.rmtree(_DUMP_FILE_STORE, True)
+	_DUMP_FILE_STORE.mkdir(parents=True)
+
 	async with async_playwright() as playwright:
 		await run(playwright)
 
@@ -141,5 +147,4 @@ async def main():
 			print(file)
 
 
-Path("exports").mkdir(exist_ok=True)
 asyncio.run(main())
