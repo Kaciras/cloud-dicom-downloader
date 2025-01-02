@@ -1,12 +1,18 @@
 import asyncio
 import shutil
+from base64 import b64encode
+from collections import defaultdict
 from dataclasses import dataclass
-from io import TextIOWrapper
+from hashlib import sha256
+from io import TextIOWrapper, BytesIO
 from pathlib import Path
 from typing import BinaryIO
 
-from playwright.async_api import Playwright, Response, async_playwright, WebSocket
+from playwright.async_api import Playwright, Response, async_playwright, WebSocket, Page
+from pydicom import dcmread, Dataset
 from yarl import URL
+
+from crawlers._utils import pathify
 
 _DUMP_STORE = Path("download/dumps")
 _DUMP_FILE_COMMENT = "# HTTP dump file, request body size = "
@@ -207,9 +213,34 @@ async def inspect():
 			print(len(frames))
 		else:
 			exchange = HTTPDumpFile.read_from(file)
-			if exchange.method == "POST":
-				print(file)
+			print(exchange.url)
+
+
+def extract_szjudianyun():
+	file = next(_DUMP_STORE.glob("*.ws"))
+	frames = deserialize_ws(file)
+	slices = defaultdict(list)
+	for frame in frames:
+		if isinstance(frame[1], bytes):
+			content = frame[1][1:]
+			ds = dcmread(BytesIO(content))
+			slices[suggest_series_name(ds)].append(content)
+
+
+def suggest_series_name(ds: Dataset):
+	"""
+	从实例的标签中获取序列名，不一定存在所以有时也得考虑从外层获取。
+	"""
+	if ds.SeriesDescription:
+		return pathify(ds.SeriesDescription)
+	if ds.SeriesNumber is not None:
+		return str(ds.SeriesNumber)
+	if ds.SeriesInstanceUID:
+		h = sha256(ds.SeriesInstanceUID)
+		h = h.digest()
+		return b64encode(h)[:20].decode()
 
 
 # asyncio.run(inspect())
-asyncio.run(dump_network())
+# asyncio.run(dump_network())
+extract_szjudianyun()
