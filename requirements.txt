@@ -6,6 +6,7 @@ pydicom~=3.0
 pylibjpeg~=2.0
 numpy~=2.2
 moviepy~=2.1
+playwright~=1.49
 
 # pylibjpeg[all]
 pylibjpeg-libjpeg~=2.3

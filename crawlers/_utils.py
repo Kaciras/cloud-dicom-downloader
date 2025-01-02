@@ -119,6 +119,7 @@ class SeriesDirectory:
 	封装了创建序列文件夹，以及计算影像文件名的操作，做了一些特殊处理：
 
 	- 防止序列目录名重复，自动添加编号后缀。
+	- 延迟创建目录，直到获取文件名准备写入。
 	- 映像文件名填充 0 前缀，确保列出文件操作能返回正确的顺序。
 	"""
 
@@ -136,6 +137,16 @@ class SeriesDirectory:
 			self._path.mkdir(exist_ok=True)
 
 	def get(self, index: int, extension: str):
+		"""
+		获取指定次序图片的文件名，并自动创建父目录。
+
+		之所以使用该方法，是因为文件系统遍历目录的顺序是不确定的，最常见的情况就是按照字符顺序，
+		以至于出现 "2.dcm" > "12.dcm"，而该方法会在前面填 "0" 来避免该情况。
+
+		:param index: 图像的次序
+		:param extension: 文件扩展名
+		:return: 文件路径，一般接下来就是写入文件。
+		"""
 		if not self._path:
 			self.make_dir()
 		base = f"{index + 1}.{extension}"

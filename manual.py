@@ -5,46 +5,19 @@ from io import TextIOWrapper
 from pathlib import Path
 from typing import BinaryIO
 
-from playwright.async_api import Playwright, Response, async_playwright, BrowserContext, WebSocket
+from playwright.async_api import Playwright, Response, async_playwright, WebSocket
 from yarl import URL
 
-_DUMP_FILE_STORE = Path("download/dumps")
+_DUMP_STORE = Path("download/dumps")
 _DUMP_FILE_COMMENT = "# HTTP dump file, request body size = "
 
 index = 0
 
-async def dump_websocket(ws: WebSocket):
-	global index
-	index += 1
-
-	fp = _DUMP_FILE_STORE.joinpath(F"{index}.ws").open("wb")
-
-	def write_data(method, data: str | bytes):
-		fp.write(method)
-		if isinstance(data, bytes):
-			fp.write(F":bytes:{len(data)}\n".encode())
-			fp.write(data)
-		else:
-			fp.write(F":str:{len(data)}\n".encode())
-			fp.write(data.encode())
-		fp.write(b"\n\n")
-
-	def handle_sent(data: str | bytes):
-		write_data(b"sent", data)
-
-	def handle_received(data: str | bytes):
-		write_data(b"received", data)
-
-	def ccc(_):
-		fp.close()
-		print("websocket closing...")
-
-	ws.on("close",ccc)
-	ws.on("framesent", handle_sent)
-	ws.on("framereceived", handle_received)
-
 
 async def dump_http(response: Response):
+	"""
+	将响应和它的请求序列化到同一个文件，该文件虽以 .http 结尾但并不是标准的格式。
+	"""
 	global index
 	index += 1
 	request = response.request
@@ -54,7 +27,7 @@ async def dump_http(response: Response):
 	else:
 		req_body_size = 0
 
-	with _DUMP_FILE_STORE.joinpath(F"{index}.http").open("wb") as fp:
+	with _DUMP_STORE.joinpath(F"{index}.http").open("wb") as fp:
 		writer = TextIOWrapper(fp, encoding="utf-8", newline="", write_through=True)
 		writer.write(F"{_DUMP_FILE_COMMENT}{req_body_size}\r\n")
 
@@ -84,6 +57,33 @@ async def dump_http(response: Response):
 			fp.write(await response.body())
 
 
+async def dump_websocket(ws: WebSocket):
+	global index
+	index += 1
+
+	fp = _DUMP_STORE.joinpath(F"{index}.ws").open("wb")
+
+	def write_data(method, data: str | bytes):
+		fp.write(method)
+		if isinstance(data, bytes):
+			fp.write(F":bytes:{len(data)}\n".encode())
+			fp.write(data)
+		else:
+			fp.write(F":str:{len(data)}\n".encode())
+			fp.write(data.encode())
+		fp.write(b"\n\n")
+
+	def handle_sent(data: str | bytes):
+		write_data(b"sent", data)
+
+	def handle_received(data: str | bytes):
+		write_data(b"received", data)
+
+	ws.on("close", lambda _: fp.close())
+	ws.on("framesent", handle_sent)
+	ws.on("framereceived", handle_received)
+
+
 def _next_line(fp: BinaryIO):
 	"""
 	TextIO 对 \r\n 的处理很垃圾，不自动去掉 \r，还得自己处理。
@@ -104,7 +104,8 @@ def _read_headers(fp: BinaryIO):
 @dataclass(slots=True, eq=False, repr=False)
 class HTTPDumpFile:
 	"""
-	转储的 HTTP 文件，在同一个文件里同时包含了请求和响应。
+	表示转储的 HTTP 文件，为了应对可能的大响应体，默认只加载了头部，
+	访问 request_body 和 response_body 会再读一次。
 	"""
 
 	_headers_end: int
@@ -149,41 +150,6 @@ class HTTPDumpFile:
 		)
 
 
-async def run(playwright: Playwright):
-	browser = await playwright.chromium.launch(
-		executable_path=r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-		headless=False,
-	)
-
-	context = await browser.new_context()
-	waiter = asyncio.Event()
-
-	# 关闭浏览器窗口并不结束浏览器进程，只能依靠页面计数来判断。
-	# https://github.com/microsoft/playwright/issues/2946
-	def check_all_closed():
-		if len(context.pages) == 0:
-			waiter.set()
-
-	context.on("page", lambda p: p.on("close", check_all_closed))
-
-	page = await context.new_page()
-	context.on("response", dump_http)
-	page.on("websocket", dump_websocket)
-
-	await page.goto("https://tieba.baidu.com/index.html", wait_until="commit")
-
-	await waiter.wait()
-	await browser.close()
-
-
-async def dump_network():
-	shutil.rmtree(_DUMP_FILE_STORE, True)
-	_DUMP_FILE_STORE.mkdir(parents=True)
-
-	async with async_playwright() as playwright:
-		await run(playwright)
-
-
 def deserialize_ws(dump_file: Path):
 	frames = []
 	with dump_file.open("rb") as fp:
@@ -200,8 +166,42 @@ def deserialize_ws(dump_file: Path):
 			frames.append((is_sent, data))
 
 
+async def run(playwright: Playwright, url: str):
+	browser = await playwright.chromium.launch(
+		headless=False,
+		executable_path=r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+	)
+
+	context = await browser.new_context()
+	waiter = asyncio.Event()
+
+	# 关闭浏览器窗口并不结束浏览器进程，只能依靠页面计数来判断。
+	# https://github.com/microsoft/playwright/issues/2946
+	def check_all_closed():
+		if len(context.pages) == 0:
+			waiter.set()
+
+	context.on("page", lambda x: x.on("close", check_all_closed))
+
+	page = await context.new_page()
+	context.on("response", dump_http)
+	page.on("websocket", dump_websocket)
+
+	await page.goto(url, wait_until="commit")
+	await waiter.wait()
+	await browser.close()
+
+
+async def dump_network():
+	shutil.rmtree(_DUMP_STORE, True)
+	_DUMP_STORE.mkdir(parents=True)
+
+	async with async_playwright() as playwright:
+		await run(playwright, "https://tieba.baidu.com/index.html")
+
+
 async def inspect():
-	for file in _DUMP_FILE_STORE.iterdir():
+	for file in _DUMP_STORE.iterdir():
 		if file.suffix == ".ws":
 			frames = deserialize_ws(file)
 			print(len(frames))
