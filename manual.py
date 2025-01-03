@@ -1,18 +1,16 @@
 import asyncio
 import shutil
-from base64 import b64encode
 from collections import defaultdict
 from dataclasses import dataclass
-from hashlib import sha256
 from io import TextIOWrapper, BytesIO
 from pathlib import Path
 from typing import BinaryIO
 
-from playwright.async_api import Playwright, Response, async_playwright, WebSocket, Page
-from pydicom import dcmread, Dataset
+from playwright.async_api import Playwright, Response, async_playwright, WebSocket
+from pydicom import dcmread
 from yarl import URL
 
-from crawlers._utils import pathify
+from crawlers._utils import suggest_series_name
 
 _DUMP_STORE = Path("download/dumps")
 _DUMP_FILE_COMMENT = "# HTTP dump file, request body size = "
@@ -69,15 +67,20 @@ async def dump_websocket(ws: WebSocket):
 
 	fp = _DUMP_STORE.joinpath(F"{index}.ws").open("wb")
 
+	# 还没有办法获取 WS 请求的头部，虽有提案但是被关闭了。
+	# https://github.com/microsoft/playwright/issues/7474
+	fp.write(ws.url.encode())
+	fp.write(b"\n")
+
 	def write_data(method, data: str | bytes):
+		fp.write(b"\n\n")
 		fp.write(method)
 		if isinstance(data, bytes):
-			fp.write(F":bytes:{len(data)}\n".encode())
+			fp.write(F":b:{len(data)}\n".encode())
 			fp.write(data)
 		else:
-			fp.write(F":str:{len(data)}\n".encode())
+			fp.write(F":s:{len(data)}\n".encode())
 			fp.write(data.encode())
-		fp.write(b"\n\n")
 
 	def handle_sent(data: str | bytes):
 		write_data(b"sent", data)
@@ -85,6 +88,7 @@ async def dump_websocket(ws: WebSocket):
 	def handle_received(data: str | bytes):
 		write_data(b"received", data)
 
+	# ws 并不会在页面关闭后自动触发 close 事件，
 	ws.on("close", lambda _: fp.close())
 	ws.on("framesent", handle_sent)
 	ws.on("framereceived", handle_received)
@@ -159,17 +163,16 @@ class HTTPDumpFile:
 def deserialize_ws(dump_file: Path):
 	frames = []
 	with dump_file.open("rb") as fp:
-		while True:
+		url = fp.readline().decode()[:-1]
+		while fp.read(2) == b"\n\n":
 			line = fp.readline()
-			if not line:
-				return frames
 			method, type_, size = line.split(b":")
 			is_sent = method == b"sent"
 			data = fp.read(int(size))
-			if type_ == b"str":
+			if type_ == b"s":
 				data = data.decode()
-			fp.read(2)
 			frames.append((is_sent, data))
+		return url, frames
 
 
 async def run(playwright: Playwright, url: str):
@@ -181,7 +184,7 @@ async def run(playwright: Playwright, url: str):
 	context = await browser.new_context()
 	waiter = asyncio.Event()
 
-	# 关闭浏览器窗口并不结束浏览器进程，只能依靠页面计数来判断。
+	# 关闭窗口并不结束浏览器进程，只能依靠页面计数来判断。
 	# https://github.com/microsoft/playwright/issues/2946
 	def check_all_closed():
 		if len(context.pages) == 0:
@@ -195,7 +198,7 @@ async def run(playwright: Playwright, url: str):
 
 	await page.goto(url, wait_until="commit")
 	await waiter.wait()
-	await browser.close()
+	await browser.close(reason="所有页面关闭，正常结束")
 
 
 async def dump_network():
@@ -209,38 +212,24 @@ async def dump_network():
 async def inspect():
 	for file in _DUMP_STORE.iterdir():
 		if file.suffix == ".ws":
-			frames = deserialize_ws(file)
+			url, frames = deserialize_ws(file)
 			print(len(frames))
 		else:
 			exchange = HTTPDumpFile.read_from(file)
-			print(exchange.url)
+			print(F"{exchange.status} {file.name}")
 
 
 def extract_szjudianyun():
 	file = next(_DUMP_STORE.glob("*.ws"))
-	frames = deserialize_ws(file)
-	slices = defaultdict(list)
+	_, frames = deserialize_ws(file)
+	series_list = defaultdict(list)
 	for frame in frames:
 		if isinstance(frame[1], bytes):
 			content = frame[1][1:]
 			ds = dcmread(BytesIO(content))
-			slices[suggest_series_name(ds)].append(content)
+			series_list[suggest_series_name(ds)].append(content)
 
 
-def suggest_series_name(ds: Dataset):
-	"""
-	从实例的标签中获取序列名，不一定存在所以有时也得考虑从外层获取。
-	"""
-	if ds.SeriesDescription:
-		return pathify(ds.SeriesDescription)
-	if ds.SeriesNumber is not None:
-		return str(ds.SeriesNumber)
-	if ds.SeriesInstanceUID:
-		h = sha256(ds.SeriesInstanceUID)
-		h = h.digest()
-		return b64encode(h)[:20].decode()
-
-
-# asyncio.run(inspect())
+asyncio.run(inspect())
 # asyncio.run(dump_network())
-extract_szjudianyun()
+# extract_szjudianyun()
