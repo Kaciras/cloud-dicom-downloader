@@ -1,5 +1,5 @@
-import os
 import re
+import sys
 from hashlib import sha256
 from pathlib import Path
 
@@ -13,26 +13,26 @@ from tqdm import tqdm
 
 from crawlers._utils import SeriesDirectory
 
-# moviepy 里头调用 ffmpeg 命令行工具，不指定路径的话也会自动下载一个。
-os.environ["FFMPEG_BINARY"] = r"D:\Program Files\ffmpeg\bin\ffmpeg.exe"
-moviepy_logger = TqdmProgressBarLogger(print_messages=False)
+_moviepy_logger = TqdmProgressBarLogger(print_messages=False)
 
 OUTPUT_DIR = Path("exports")
 FPS = 10
-DIGITS_RE = re.compile(r"\d+")
+
+VIDEO_CODECS = ("avi", "mp4", "ogv", "webm")
+_DIGITS_RE = re.compile(r"\d+")
 
 
 def _try_sort_numeric(values: list[Path]):
 	"""
 	尝试从文件名中找出数字，并按其排序，避免文件系统返回错误的顺序。
 
-	:return: 如果有一个文件名中没数字则原样返回，否则返回排序后的列表。
+	:return: 如果有一个文件名不含数字则原样返回，否则返回排序后的列表。
 	"""
 	tuples = []
 	for value in values:
 		# 扩展名可能有数字（比如 .jp2）所以用 stem。
 		# 应该没有像分卷压缩包那样把序号放最后的吧。
-		match = DIGITS_RE.search(value.stem)
+		match = _DIGITS_RE.search(value.stem)
 		if not match:
 			return values
 		tuples.append((int(match.group(0)), value))
@@ -92,17 +92,29 @@ class SeriesImageList(list[np.ndarray]):
 		return images
 
 	def to_video(self, out_file: Path):
+		"""
+		保存影像序列为视频，编码将根据文件的扩展名决定，支持 avi、mp4、ogv、webm，其中 avi 是无损。
+
+		:param out_file: 输出的视频文件名
+		"""
 		clips = [ImageClip(x, duration=1 / FPS) for x in self]
 		video = concatenate_videoclips(clips, method="compose")
 		codec = "png" if out_file.suffix == ".avi" else None
-		video.write_videofile(out_file, codec=codec, fps=FPS, logger=moviepy_logger)
+		video.write_videofile(out_file, codec=codec, fps=FPS, logger=_moviepy_logger)
 
 	def to_pictures(self, save_to: Path, ext="png"):
 		out_dir = SeriesDirectory(save_to, len(self), False)
 		for i, px in enumerate(self):
 			Image.fromarray(px).save(out_dir.get(i, ext))
 
-	def to_dcm_files(self, save_to: Path, entropy=None):
+	def to_dcm_files(self, save_to: Path, entropy: str = None):
+		"""
+		将影像序列保存为 DCM 文件，仅包含必要的标签，其中一些 UID 将自动生成。
+		由于本类不含标签数据，做 DCM -> DCM 的转换会丢失标签信息。
+
+		:param save_to: 要保存到的目录
+		:param entropy: 种子字符串，用于生成稳定的 UID
+		"""
 		hasher, blobs = sha256(b"Kaciras DICOM Convertor"), []
 		out_dir = SeriesDirectory(save_to, len(blobs), False)
 
@@ -146,3 +158,33 @@ class SeriesImageList(list[np.ndarray]):
 
 			ds.save_as(out_dir.get(i, "dcm"), enforce_file_format=True)
 
+
+def main():
+	OUTPUT_DIR.mkdir(exist_ok=True)
+	_, codec, source = sys.argv
+	source = Path(source)
+
+	if source.is_file():
+		slices = SeriesImageList.from_video(source)
+	else:
+		files = list(source.iterdir())
+		if files[0].suffix == ".dcm":
+			slices = SeriesImageList.from_dcm_files(files)
+		else:
+			slices = SeriesImageList.from_pictures(files)
+
+	if codec == "dcm":
+		slices.to_dcm_files(OUTPUT_DIR / source.name)
+	elif codec in Image.EXTENSION:
+		slices.to_pictures(OUTPUT_DIR / source.name)
+	elif codec in VIDEO_CODECS:
+		slices.to_video(OUTPUT_DIR / (source.name + ".avi"))
+	else:
+		print(F"转码失败，未知的输出格式：{codec}")
+
+
+if __name__ == "__main__":
+	main()
+
+# moviepy 里头调用 ffmpeg 命令行工具，不指定路径的话它会自动下载一个。
+# os.environ["FFMPEG_BINARY"] = r"D:\Program Files\ffmpeg\bin\ffmpeg.exe"
