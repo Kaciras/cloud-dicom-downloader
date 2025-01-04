@@ -41,7 +41,7 @@ async def dump_http(response: Response):
 		# all_headers 返回报文层面的数据，需要滤掉 HTTP2 的特殊头。
 		for k, v in (await request.all_headers()).items():
 			if k[0] != ":":
-				writer.write(f"\r\n{k}: {v}")
+				writer.write(f"\r\n{k}:{v}")
 
 		fp.write(b"\r\n\r\n")
 		writer.write(f"HTTP1/1 {response.status} {response.status_text}")
