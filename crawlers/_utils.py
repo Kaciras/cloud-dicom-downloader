@@ -70,15 +70,17 @@ _illegal_path_chars = re.compile(r'[<>:"/\\?*|]')
 
 
 def _to_full_width(match: re.Match[str]):
-	if match[0] == ":": return "："
-	if match[0] == "*": return "＊"
-	if match[0] == "?": return "？"
-	if match[0] == '"': return "'"
-	if match[0] == '|': return "｜"
-	if match[0] == '<': return "＜"
-	if match[0] == '>': return "＞"
-	if match[0] == "/": return "／"
-	if match[0] == "\\": return "＼"
+	# 一堆 if 用时 2.54s，跟从 dict 取用时 2.23s 差不多。
+	char = match[0]
+	if char == ":": return "："
+	if char == "*": return "＊"
+	if char == "?": return "？"
+	if char == '"': return "'"
+	if char == '|': return "｜"
+	if char == '<': return "＜"
+	if char == '>': return "＞"
+	if char == "/": return "／"
+	if char == "\\": return "＼"
 
 
 def pathify(text: str):

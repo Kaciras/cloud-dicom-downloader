@@ -52,7 +52,7 @@ def _get_slice_position(ds):
 	return np.dot(np.cross(row, col), position)
 
 
-class SeriesImageList(list[np.ndarray]):
+class SliceList(list[np.ndarray]):
 	"""
 	DICOM 文件转换工具，支持 DCM 文件、图片、视频三者之间的转换。
 	用法是先 from_* 读取，然后 to_* 输出即可。
@@ -63,17 +63,17 @@ class SeriesImageList(list[np.ndarray]):
 		# moviepy 文件不存在的报错有点怪，还是自己检查吧。
 		if not file.is_file():
 			raise FileNotFoundError(file)
-		frames = VideoFileClip(file).iter_frames(sample_fps)
-		return SeriesImageList(frames)
+		clip = VideoFileClip(file)
+		return SliceList(clip.iter_frames(sample_fps))
 
 	@staticmethod
 	def from_pictures(files: list[Path]):
 		files = _try_sort_numeric(files)
-		return SeriesImageList(np.asarray(Image.open(file)) for file in files)
+		return SliceList(np.asarray(Image.open(file)) for file in files)
 
 	@staticmethod
 	def from_dcm_files(files: list[Path]):
-		images = SeriesImageList()
+		images = SliceList()
 		datasets = [dcmread(x) for x in files]
 		datasets.sort(key=_get_slice_position)
 
@@ -172,13 +172,13 @@ def main():
 	codec, source = args.format.lower(), Path(args.source)
 
 	if source.is_file():
-		slices = SeriesImageList.from_video(source, args.ifps)
+		slices = SliceList.from_video(source, args.ifps)
 	else:
 		files = list(source.iterdir())
 		if files[0].suffix == ".dcm":
-			slices = SeriesImageList.from_dcm_files(files)
+			slices = SliceList.from_dcm_files(files)
 		else:
-			slices = SeriesImageList.from_pictures(files)
+			slices = SliceList.from_pictures(files)
 
 	if codec == "dcm":
 		slices.to_dcm_files(OUTPUT_DIR / source.name)

@@ -207,7 +207,7 @@ def save_series(save_to: Path, study: dict[str, list[bytes]]):
 	for name, series in study.items():
 		directory = SeriesDirectory(pathify(name), len(series))
 		for i, slice_ in enumerate(series):
-			directory.get(i, ".dcm").write_bytes(slice_)
+			directory.get(i, "dcm").write_bytes(slice_)
 
 
 async def dump_network(url: str):
