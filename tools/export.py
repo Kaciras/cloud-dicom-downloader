@@ -30,7 +30,9 @@ def _try_sort_numeric(values: list[Path]):
 	"""
 	tuples = []
 	for value in values:
-		match = DIGITS_RE.search(value.name)
+		# 扩展名可能有数字（比如 .jp2）所以用 stem。
+		# 应该没有像分卷压缩包那样把序号放最后的吧。
+		match = DIGITS_RE.search(value.stem)
 		if not match:
 			return values
 		tuples.append((int(match.group(0)), value))
