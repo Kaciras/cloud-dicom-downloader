@@ -10,10 +10,10 @@ from yarl import URL
 
 from crawlers._utils import pathify, SeriesDirectory
 
-_DUMP_STORE = Path("download/dumps")
+_DUMP_STORE = Path(__file__) / "../../download/dumps"
 _DUMP_FILE_COMMENT = "# HTTP dump file, request body size = "
 
-index = 0
+_index = 0
 
 
 async def dump_http(response: Response):
@@ -21,8 +21,8 @@ async def dump_http(response: Response):
 	将响应和它的请求序列化到同一个文件，该文件虽以 .http 结尾但并不是标准的格式。
 	这样的设计是文件可以直接以文本的形式的浏览，如果用 zip 的话还要多打开一次。
 	"""
-	global index
-	index += 1
+	global _index
+	_index += 1
 	request = response.request
 
 	if request.post_data_buffer:
@@ -30,7 +30,7 @@ async def dump_http(response: Response):
 	else:
 		req_body_size = 0
 
-	with _DUMP_STORE.joinpath(F"{index}.http").open("wb") as fp:
+	with _DUMP_STORE.joinpath(F"{_index}.http").open("wb") as fp:
 		writer = TextIOWrapper(fp, encoding="utf-8", newline="", write_through=True)
 		writer.write(F"{_DUMP_FILE_COMMENT}{req_body_size}\r\n")
 
@@ -61,10 +61,10 @@ async def dump_http(response: Response):
 
 
 async def dump_websocket(ws: WebSocket):
-	global index
-	index += 1
+	global _index
+	_index += 1
 
-	fp = _DUMP_STORE.joinpath(F"{index}.ws").open("wb")
+	fp = _DUMP_STORE.joinpath(F"{_index}.ws").open("wb")
 
 	# 还没有办法获取 WS 请求的头部，虽有提案但是被关闭了。
 	# https://github.com/microsoft/playwright/issues/7474
@@ -87,7 +87,9 @@ async def dump_websocket(ws: WebSocket):
 	def handle_received(data: str | bytes):
 		write_data(b"received", data)
 
-	# ws 并不会在页面关闭后自动触发 close 事件，
+	# ws 并不会在页面关闭后自动触发 close 事件，但 Python 会在退出时
+	# 自动关闭并刷新所有的文件流，所以应该没问题。
+	# https://stackoverflow.com/a/17578052/7065321
 	ws.on("close", lambda _: fp.close())
 	ws.on("framesent", handle_sent)
 	ws.on("framereceived", handle_received)

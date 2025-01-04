@@ -2,7 +2,7 @@ from pathlib import Path
 
 from yarl import URL
 
-from manual import deserialize_ws, HTTPDumpFile
+from tools.manual import deserialize_ws, HTTPDumpFile
 
 
 def test_deserialize_ws():
