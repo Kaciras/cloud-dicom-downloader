@@ -1,16 +1,14 @@
 import asyncio
 import shutil
-from collections import defaultdict
 from dataclasses import dataclass
-from io import TextIOWrapper, BytesIO
+from io import TextIOWrapper
 from pathlib import Path
 from typing import BinaryIO
 
 from playwright.async_api import Playwright, Response, async_playwright, WebSocket
-from pydicom import dcmread
 from yarl import URL
 
-from crawlers._utils import suggest_series_name
+from crawlers._utils import pathify, SeriesDirectory
 
 _DUMP_STORE = Path("download/dumps")
 _DUMP_FILE_COMMENT = "# HTTP dump file, request body size = "
@@ -21,6 +19,7 @@ index = 0
 async def dump_http(response: Response):
 	"""
 	将响应和它的请求序列化到同一个文件，该文件虽以 .http 结尾但并不是标准的格式。
+	这样的设计是文件可以直接以文本的形式的浏览，如果用 zip 的话还要多打开一次。
 	"""
 	global index
 	index += 1
@@ -201,12 +200,20 @@ async def run(playwright: Playwright, url: str):
 	await browser.close(reason="所有页面关闭，正常结束")
 
 
-async def dump_network():
+def save_series(save_to: Path, study: dict[str, list[bytes]]):
+	save_to.mkdir(parents=True, exist_ok=True)
+	for name, series in study.items():
+		directory = SeriesDirectory(pathify(name), len(series))
+		for i, slice_ in enumerate(series):
+			directory.get(i, ".dcm").write_bytes(slice_)
+
+
+async def dump_network(url: str):
 	shutil.rmtree(_DUMP_STORE, True)
 	_DUMP_STORE.mkdir(parents=True)
 
 	async with async_playwright() as playwright:
-		await run(playwright, "https://tieba.baidu.com/index.html")
+		await run(playwright, url)
 
 
 async def inspect():
@@ -219,17 +226,5 @@ async def inspect():
 			print(F"{exchange.status} {file.name}")
 
 
-def extract_szjudianyun():
-	file = next(_DUMP_STORE.glob("*.ws"))
-	_, frames = deserialize_ws(file)
-	series_list = defaultdict(list)
-	for frame in frames:
-		if isinstance(frame[1], bytes):
-			content = frame[1][1:]
-			ds = dcmread(BytesIO(content))
-			series_list[suggest_series_name(ds)].append(content)
-
-
-asyncio.run(inspect())
-# asyncio.run(dump_network())
-# extract_szjudianyun()
+# asyncio.run(inspect())
+# asyncio.run(dump_network("https://tieba.baidu.com/index.html"))

@@ -2,11 +2,14 @@ import math
 import random
 import re
 import sys
+from base64 import b64encode
+from hashlib import sha256
 from io import TextIOWrapper
 from pathlib import Path
 from zipfile import ZipFile
 
 import aiohttp
+from pydicom import Dataset
 from pydicom.tag import Tag
 from pydicom.valuerep import VR, STR_VR, INT_VR, FLOAT_VR
 
@@ -136,7 +139,7 @@ class SeriesDirectory:
 			self._path = self._suggested
 			self._path.mkdir(exist_ok=True)
 
-	def get(self, index: int, extension: str):
+	def get(self, index: int, extension: str) -> Path:
 		"""
 		获取指定次序图片的文件名，并自动创建父目录。
 
@@ -175,3 +178,17 @@ def parse_dcm_value(value: str, vr: str):
 	if len(parts) == 1:
 		return cast_fn(value)
 	return [cast_fn(x) for x in parts]
+
+
+def suggest_series_name(ds: Dataset):
+	"""
+	从实例的标签中获取序列名，不一定存在所以有时也得考虑从外层获取。
+	"""
+	if ds.SeriesDescription:
+		return ds.SeriesDescription
+	if ds.SeriesNumber is not None:
+		return str(ds.SeriesNumber)
+	if ds.SeriesInstanceUID:
+		h = sha256(ds.SeriesInstanceUID)
+		h = h.digest()
+		return b64encode(h)[:20].decode()
