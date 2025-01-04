@@ -1,5 +1,5 @@
+import argparse
 import re
-import sys
 from hashlib import sha256
 from pathlib import Path
 
@@ -91,16 +91,17 @@ class SeriesImageList(list[np.ndarray]):
 
 		return images
 
-	def to_video(self, out_file: Path):
+	def to_video(self, out_file: Path, fps=FPS):
 		"""
 		保存影像序列为视频，编码将根据文件的扩展名决定，支持 avi、mp4、ogv、webm，其中 avi 是无损。
 
+		:param fps: 帧率，默认每秒 10 张图
 		:param out_file: 输出的视频文件名
 		"""
-		clips = [ImageClip(x, duration=1 / FPS) for x in self]
+		clips = [ImageClip(x, duration=1 / fps) for x in self]
 		video = concatenate_videoclips(clips, method="compose")
 		codec = "png" if out_file.suffix == ".avi" else None
-		video.write_videofile(out_file, codec=codec, fps=FPS, logger=_moviepy_logger)
+		video.write_videofile(out_file, codec=codec, fps=fps, logger=_moviepy_logger)
 
 	def to_pictures(self, save_to: Path, ext="png"):
 		out_dir = SeriesDirectory(save_to, len(self), False)
@@ -160,12 +161,18 @@ class SeriesImageList(list[np.ndarray]):
 
 
 def main():
+	parser = argparse.ArgumentParser(description="DICOM Convertor")
+	parser.add_argument("format")
+	parser.add_argument("source")
+	parser.add_argument("-ifps", type=int)
+	parser.add_argument("-ofps", type=int)
+	args = parser.parse_args()
+
 	OUTPUT_DIR.mkdir(exist_ok=True)
-	_, codec, source = sys.argv
-	source = Path(source)
+	codec, source = args.format.lower(), Path(args.source)
 
 	if source.is_file():
-		slices = SeriesImageList.from_video(source)
+		slices = SeriesImageList.from_video(source, args.ifps)
 	else:
 		files = list(source.iterdir())
 		if files[0].suffix == ".dcm":
@@ -176,11 +183,12 @@ def main():
 	if codec == "dcm":
 		slices.to_dcm_files(OUTPUT_DIR / source.name)
 	elif codec in Image.EXTENSION:
-		slices.to_pictures(OUTPUT_DIR / source.name)
+		slices.to_pictures(OUTPUT_DIR / source.name, codec)
 	elif codec in VIDEO_CODECS:
-		slices.to_video(OUTPUT_DIR / (source.name + ".avi"))
+		name = source.stem + "." + codec
+		slices.to_video(OUTPUT_DIR / name, args.ofps)
 	else:
-		print(F"转码失败，未知的输出格式：{codec}")
+		print(F"命令行参数有错误，未知的输出格式：{codec}")
 
 
 if __name__ == "__main__":
