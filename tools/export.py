@@ -40,7 +40,7 @@ def _try_sort_numeric(values: list[Path]):
 	return list(second for _, second in tuples)
 
 
-def _get_slice_position(ds):
+def _get_slice_position(ds: Dataset):
 	"""
 	通过 ImagePositionPatient 和 ImageOrientationPatient 计算切面在扫描轴上的位置。
 	原理就是对切面的三个坐标应用矩阵变换，结果等于 SliceLocation，但后者是可选标签不一定有。
@@ -75,10 +75,14 @@ class SliceList(list[np.ndarray]):
 	def from_dcm_files(files: list[Path]):
 		images = SliceList()
 		datasets = [dcmread(x) for x in files]
-		datasets.sort(key=_get_slice_position)
+
+		try:
+			datasets.sort(key=_get_slice_position)
+		except AttributeError:
+			pass  # 可能是从图片转来的，没有位置标签。
 
 		# https://github.com/ykuo2/dicom2jpg/blob/main/dicom2jpg/utils.py
-		for ds in tqdm(datasets, "Loading"):
+		for ds in tqdm(datasets, "Loading", leave=False):
 			px = ds.pixel_array
 			px = pixels.apply_modality_lut(px, ds)
 			px = pixels.apply_voi_lut(px, ds)
