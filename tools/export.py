@@ -47,9 +47,12 @@ def _get_slice_position(ds: Dataset):
 
 	https://stackoverflow.com/a/6598664/7065321
 	"""
-	position = np.array(ds.ImagePositionPatient)
-	row, col = np.array(ds.ImageOrientationPatient).reshape(2, 3)
-	return np.dot(np.cross(row, col), position)
+	try:
+		return ds.SliceLocation
+	except AttributeError:
+		position = np.array(ds.ImagePositionPatient)
+		row, col = np.array(ds.ImageOrientationPatient).reshape(2, 3)
+		return np.dot(np.cross(row, col), position)
 
 
 class SliceList(list[np.ndarray]):
