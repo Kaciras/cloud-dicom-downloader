@@ -1,5 +1,6 @@
 import argparse
 import re
+import typing
 from hashlib import sha256
 from pathlib import Path
 
@@ -25,8 +26,7 @@ _DIGITS_RE = re.compile(r"\d+")
 def _try_sort_numeric(values: list[Path]):
 	"""
 	尝试从文件名中找出数字，并按其排序，避免文件系统返回错误的顺序。
-
-	:return: 如果有一个文件名不含数字则原样返回，否则返回排序后的列表。
+	如果有一个文件名不含数字则原样返回，否则返回排序后的列表。
 	"""
 	tuples = []
 	for value in values:
@@ -37,7 +37,7 @@ def _try_sort_numeric(values: list[Path]):
 			return values
 		tuples.append((int(match.group(0)), value))
 	tuples.sort()
-	return list(second for _, second in tuples)
+	return [second for _, second in tuples]
 
 
 def _get_slice_position(ds: Dataset):
@@ -76,8 +76,11 @@ class SliceList(list[np.ndarray]):
 
 	@staticmethod
 	def from_dcm_files(files: list[Path]):
-		images = SliceList()
-		datasets = [dcmread(x) for x in files]
+		files, images = _try_sort_numeric(files), SliceList()
+
+		datasets = typing.cast(list[Dataset], files)
+		for i, file in enumerate(files):
+			datasets[i] = dcmread(file)
 
 		try:
 			datasets.sort(key=_get_slice_position)
