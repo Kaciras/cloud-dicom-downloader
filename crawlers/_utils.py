@@ -1,5 +1,4 @@
 import math
-import random
 import re
 import sys
 from base64 import b64encode
@@ -13,13 +12,12 @@ from pydicom import Dataset
 from pydicom.tag import Tag
 from pydicom.valuerep import VR, STR_VR, INT_VR, FLOAT_VR
 
-_UA_VER = random.randint(109, 134)
-
+# 这儿的请求头也就意思一下，真要处理请求特征反爬还得使用自动化浏览器。
 _HEADERS = {
-	"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 	"Accept-Language": "zh,zh-CN;q=0.7,en;q=0.3",
+	"Accept": "*/*",
 	"Upgrade-Insecure-Requests": "1",
-	"User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:{_UA_VER}.0) Gecko/20100101 Firefox/{_UA_VER}.0",
+	"User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
 }
 
 

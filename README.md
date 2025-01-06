@@ -32,7 +32,7 @@ python downloader.py <url>
 
 ### medicalimagecloud.com
 
-海纳医信的云影像，URL 格式为`https://*.medicalimagecloud.com:<port?>/t/<32-chars-hex>`，还需要一个密码。
+海纳医信的云影像，URL 格式为`https://*.medicalimagecloud.com:<port?>/t/<hex>`，还需要一个密码。
 
 ```
 python downloader.py <url> <password> [--raw]
@@ -47,13 +47,13 @@ python downloader.py <url> <password> [--raw]
 
 重庆卫健委在线报告查看网站，其中的影像查看器也是海纳医信。
 
-URL 格式：`https://mdmis.cq12320.cn/wcs1/mdmis-app/h5/#/share/detail?share_id=<32-chars-hex>&content=<token>&channel=share`
+URL 格式：`https://mdmis.cq12320.cn/wcs1/mdmis-app/h5/#/share/detail?share_id=<hex>&content=<token>&channel=share`
 
 命令用法与注意事项跟`medicalimagecloud.com`相同，但不需要密码。
 
 ### ylyyx.shdc.org.cn
 
-上海申康医院发展中心的在线影像查看器，URL 格式为`https://ylyyx.shdc.org.cn/#/home?sid=<number>&token=<32-chars-hex>&appid=SHPulmH`。
+上海申康医院发展中心的在线影像查看器，URL 格式为`https://ylyyx.shdc.org.cn/#/home?sid=<number>&token=<hex>`。
 
 ```
 python downloader.py <url>
