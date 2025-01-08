@@ -16,22 +16,34 @@ _DUMP_FILE_COMMENT = "# HTTP dump file, request body size = "
 
 _index = 0
 
+def _next_dump_file(item):
+	extension = "ws" if isinstance(item, WebSocket) else "http"
+	name = URL(item.url).path.rsplit("/", 1)[1]
+
+	global _index
+	_index += 1
+
+	if not name:
+		return _DUMP_STORE / F"{_index}.{extension}"
+
+	if len(name) > 22:
+		name = name[:10] + "……" + name[-10:]
+
+	return _DUMP_STORE / F"{_index}_{name}.{extension}"
+
 
 async def dump_http(response: Response):
 	"""
 	将响应和它的请求序列化到同一个文件，该文件虽以 .http 结尾但并不是标准的格式。
 	这样的设计是文件可以直接以文本的形式的浏览，如果用 zip 的话还要多打开一次。
 	"""
-	global _index
-	_index += 1
 	request = response.request
-
 	if request.post_data_buffer:
 		req_body_size = len(request.post_data_buffer)
 	else:
 		req_body_size = 0
 
-	with _DUMP_STORE.joinpath(F"{_index}.http").open("wb") as fp:
+	with _next_dump_file(response).open("wb") as fp:
 		writer = TextIOWrapper(fp, encoding="utf-8", newline="", write_through=True)
 		writer.write(F"{_DUMP_FILE_COMMENT}{req_body_size}\r\n")
 
@@ -62,10 +74,7 @@ async def dump_http(response: Response):
 
 
 async def dump_websocket(ws: WebSocket):
-	global _index
-	_index += 1
-
-	fp = _DUMP_STORE.joinpath(F"{_index}.ws").open("wb")
+	fp = _next_dump_file(ws).open("wb")
 
 	# 还没有办法获取 WS 请求的头部，虽有提案但是被关闭了。
 	# https://github.com/microsoft/playwright/issues/7474
@@ -234,4 +243,4 @@ async def inspect():
 
 
 # asyncio.run(inspect())
-# asyncio.run(dump_network("https://tieba.baidu.com/index.html"))
+asyncio.run(dump_network("https://tieba.baidu.com/index.html"))
