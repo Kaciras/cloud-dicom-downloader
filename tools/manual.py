@@ -1,4 +1,5 @@
 import asyncio
+import json
 import shutil
 from dataclasses import dataclass
 from io import TextIOWrapper
@@ -199,6 +200,10 @@ async def run(playwright: Playwright, url: str):
 
 	await page.goto(url, wait_until="commit")
 	await waiter.wait()
+
+	with _DUMP_STORE.joinpath("cookies.json").open("w") as fp:
+		json.dump(await context.cookies(), fp, ensure_ascii=False)
+
 	await browser.close(reason="所有页面关闭，正常结束")
 
 
