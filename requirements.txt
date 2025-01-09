@@ -1,12 +1,15 @@
 aiohttp~=3.11
-Pillow~=11.0
+playwright~=1.49
 tqdm~=4.67
 yarl~=1.18
 pydicom~=3.0
+
+# Required by tools
 pylibjpeg~=2.0
 numpy~=2.2
 moviepy~=2.1
-playwright~=1.49
+Pillow~=11.0
+proglog~=0.1
 
 # pylibjpeg[all]
 pylibjpeg-libjpeg~=2.3
