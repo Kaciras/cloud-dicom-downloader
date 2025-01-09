@@ -11,10 +11,10 @@ from yarl import URL
 
 from crawlers._utils import pathify, SeriesDirectory
 
-_DUMP_STORE = Path(__file__) / "../../download/dumps"
+_DUMP_DIR = Path(__file__) / "../../download/dumps"
 _DUMP_FILE_COMMENT = "# HTTP dump file, request body size = "
 
-_index = 0
+_index = -1
 
 def _next_dump_file(item):
 	extension = "ws" if isinstance(item, WebSocket) else "http"
@@ -24,12 +24,12 @@ def _next_dump_file(item):
 	_index += 1
 
 	if not name:
-		return _DUMP_STORE / F"{_index}.{extension}"
+		return _DUMP_DIR / F"{_index}.{extension}"
 
 	if len(name) > 22:
 		name = name[:10] + "……" + name[-10:]
 
-	return _DUMP_STORE / F"{_index}_{name}.{extension}"
+	return _DUMP_DIR / F"{_index}_{name}.{extension}"
 
 
 async def dump_http(response: Response):
@@ -210,7 +210,7 @@ async def run(playwright: Playwright, url: str):
 	await page.goto(url, wait_until="commit")
 	await waiter.wait()
 
-	with _DUMP_STORE.joinpath("cookies.json").open("w") as fp:
+	with _DUMP_DIR.joinpath("cookies.json").open("w") as fp:
 		json.dump(await context.cookies(), fp, ensure_ascii=False)
 
 	await browser.close(reason="所有页面关闭，正常结束")
@@ -225,15 +225,15 @@ def save_series(save_to: Path, study: dict[str, list[bytes]]):
 
 
 async def dump_network(url: str):
-	shutil.rmtree(_DUMP_STORE, True)
-	_DUMP_STORE.mkdir(parents=True)
+	shutil.rmtree(_DUMP_DIR, True)
+	_DUMP_DIR.mkdir(parents=True)
 
 	async with async_playwright() as playwright:
 		await run(playwright, url)
 
 
 async def inspect():
-	for file in _DUMP_STORE.iterdir():
+	for file in _DUMP_DIR.iterdir():
 		if file.suffix == ".ws":
 			url, frames = deserialize_ws(file)
 			print(len(frames))
