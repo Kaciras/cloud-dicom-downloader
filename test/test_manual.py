@@ -6,9 +6,9 @@ from tools.manual import deserialize_ws, HTTPDumpFile
 
 
 def test_deserialize_ws():
-	url, frames = deserialize_ws(Path("fixtures/dump.ws"))
-	assert url == "ws://example.com:63001/socket.io/?EIO=3&transport=websocket"
-	assert frames == [
+	ws = deserialize_ws(Path("fixtures/dump.ws"))
+	assert ws.url == URL("ws://example.com:63001/socket.io/?EIO=3&transport=websocket")
+	assert ws.frames == [
 		(True, "2probe"),
 		(False, "3probe"),
 		(True, '{"manifest_version":3,"name":"Bookshelf-newtab"}'),

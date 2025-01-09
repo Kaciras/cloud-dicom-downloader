@@ -16,6 +16,7 @@ _DUMP_FILE_COMMENT = "# HTTP dump file, request body size = "
 
 _index = -1
 
+
 def _next_dump_file(item):
 	extension = "ws" if isinstance(item, WebSocket) else "http"
 	name = URL(item.url).path.rsplit("/", 1)[1]
@@ -152,8 +153,8 @@ class HTTPDumpFile:
 			fp.seek(skip)
 			return fp.read()
 
-	@staticmethod
-	def read_from(dump_file: Path):
+	@classmethod
+	def read_from(cls, dump_file: Path):
 		with dump_file.open("rb") as fp:
 			request_body_size = int(_next_line(fp)[len(_DUMP_FILE_COMMENT):])
 
@@ -165,25 +166,37 @@ class HTTPDumpFile:
 
 			body_offset = fp.tell()
 
-		return HTTPDumpFile(
+		return cls(
 			body_offset, request_body_size, dump_file, method,
 			URL(url), request_headers, int(status), response_headers
 		)
 
 
-def deserialize_ws(dump_file: Path):
-	frames = []
-	with dump_file.open("rb") as fp:
-		url = fp.readline().decode()[:-1]
-		while fp.read(2) == b"\n\n":
-			line = fp.readline()
-			method, type_, size = line.split(b":")
-			is_sent = method == b"sent"
-			data = fp.read(int(size))
-			if type_ == b"s":
-				data = data.decode()
-			frames.append((is_sent, data))
-		return url, frames
+@dataclass(slots=True, eq=False, repr=False)
+class WebSocketDumpFile:
+	"""
+	WebSocket 通信的转储文件，应该不会太大所以全部读取了。
+	"""
+
+	file: Path
+	url: URL
+	frames: list[(bool, bytes | str)]
+
+	@classmethod
+	def read_from(cls, dump_file: Path):
+		frames = []
+		with dump_file.open("rb") as fp:
+			url = URL(fp.readline().decode()[:-1])
+			while fp.read(2) == b"\n\n":
+				line = fp.readline()
+				method, type_, size = line.split(b":")
+				is_sent = method == b"sent"
+				data = fp.read(int(size))
+				if type_ == b"s":
+					data = data.decode()
+				frames.append((is_sent, data))
+
+		return cls(dump_file, url, frames)
 
 
 async def run(playwright: Playwright, url: str):
@@ -232,15 +245,30 @@ async def dump_network(url: str):
 		await run(playwright, url)
 
 
-async def inspect():
-	for file in _DUMP_DIR.iterdir():
-		if file.suffix == ".ws":
-			url, frames = deserialize_ws(file)
-			print(len(frames))
-		else:
-			exchange = HTTPDumpFile.read_from(file)
-			print(F"{exchange.status} {file.name}")
+@dataclass(slots=True, eq=False, repr=False)
+class DumpStore:
+
+	directory: Path
+	exchanges: list[HTTPDumpFile | WebSocketDumpFile]
+	cookies: list
+
+	@property
+	def http(self):
+		return tuple(x for x in self.exchanges if isinstance(x, HTTPDumpFile))
+
+	@classmethod
+	def read_from(cls, directory=_DUMP_DIR):
+		exchanges = []
+		for file in directory.iterdir():
+			if file.suffix == ".ws":
+				exchanges.append(WebSocketDumpFile.read_from(file))
+			elif file.suffix == ".http":
+				exchanges.append(HTTPDumpFile.read_from(file))
+
+		with directory.joinpath("cookies.json").open("r") as fp:
+			cookies = json.load(fp)
+
+		return cls(directory, exchanges, cookies)
 
 
-# asyncio.run(inspect())
-asyncio.run(dump_network("https://tieba.baidu.com/index.html"))
+# asyncio.run(dump_network("https://tieba.baidu.com/index.html"))
