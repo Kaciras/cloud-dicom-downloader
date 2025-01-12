@@ -98,7 +98,7 @@ class HinacomDownloader:
 					continue
 
 				pixels, _ = await self.get_image(info, is_raw)
-				_write_dicom(tags, pixels, dir_.get(i, ".dcm"))
+				_write_dicom(tags, pixels, dir_.get(i, "dcm"))
 
 	@staticmethod
 	async def from_url(client: ClientSession, viewer_url: str):
@@ -150,7 +150,12 @@ def _write_dicom(tag_list: list, image: bytes, filename: Path):
 		tag = Tag(item["tag"].split(",", 2))
 		definition = DicomDictionary.get(tag)
 
-		if definition:
+		if tag.group == 2:
+			# 0002 的标签只能放在 file_meta 里而不能在 ds 中存在。
+			vr, key = definition[0], definition[4]
+			value = parse_dcm_value(item["value"], vr)
+			setattr(ds.file_meta, key, value)
+		elif definition:
 			vr, key = definition[0], definition[4]
 			setattr(ds, key, parse_dcm_value(item["value"], vr))
 		else:
