@@ -209,8 +209,7 @@ async def run(share_url, password, *args):
 		viewer_url = _TARGET_PATH.search(html3).group(1)
 
 	async with await HinacomDownloader.from_url(client, viewer_url) as downloader:
-		# await downloader.download_all("--raw" in args)
-		await fetch_responses(downloader, Path("download/temp"), "--raw" in args)
+		await downloader.download_all("--raw" in args)
 
 
 # ============================== 下面仅调试用 ==============================
@@ -225,7 +224,9 @@ async def fetch_responses(downloader: HinacomDownloader, save_to: Path, is_raw: 
 	:param is_raw: 是否下载未压缩的图像，默认下载 JPEG2000 格式的。
 	"""
 	save_to.mkdir(parents=True, exist_ok=True)
-	save_to.joinpath("ImageSet.json").write_text(json.dumps(downloader.dataset))
+
+	with save_to.joinpath("ImageSet.json").open("w") as fp:
+		json.dump(downloader.dataset, fp, ensure_ascii=False)
 
 	for series in downloader.dataset["displaySets"]:
 		name, images = pathify(series["description"]), series["images"]
@@ -267,6 +268,8 @@ def build_dcm_from_responses(source: Path, out_dir: Path = None):
 				continue
 			pixels = series_dir.joinpath(f"{i}.slice").read_bytes()
 			_write_dicom(json.loads(tags), pixels, dir_.get(i, "dcm"))
+
+	print(F"从海纳医信的响应合成 DCM 文件。\n源目录：{source}\n输出目录：{out_dir}")
 
 
 def diff_tags(pivot, another):
