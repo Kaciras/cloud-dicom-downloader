@@ -17,7 +17,7 @@ from pydicom.tag import Tag
 from pydicom.uid import ExplicitVRLittleEndian, JPEG2000Lossless
 from tqdm import tqdm
 
-from crawlers._utils import pathify, new_http_client, parse_dcm_value, SeriesDirectory
+from crawlers._utils import pathify, new_http_client, parse_dcm_value, SeriesDirectory, make_unique_dir
 
 _LINK_VIEW = re.compile(r"/Study/ViewImage\?studyId=([\w-]+)")
 _LINK_ENTRY = re.compile(r"window\.location\.href = '([^']+)'")
@@ -209,7 +209,8 @@ async def run(share_url, password, *args):
 		viewer_url = _TARGET_PATH.search(html3).group(1)
 
 	async with await HinacomDownloader.from_url(client, viewer_url) as downloader:
-		await downloader.download_all("--raw" in args)
+		# await downloader.download_all("--raw" in args)
+		await fetch_responses(downloader, Path("download/temp"), "--raw" in args)
 
 
 # ============================== 下面仅调试用 ==============================
@@ -228,41 +229,44 @@ async def fetch_responses(downloader: HinacomDownloader, save_to: Path, is_raw: 
 
 	for series in downloader.dataset["displaySets"]:
 		name, images = pathify(series["description"]), series["images"]
-		dir_ = SeriesDirectory(save_to / name, len(images))
+		dir_ = make_unique_dir(save_to / name)
 
 		tasks = tqdm(images, desc=name, unit="张", file=sys.stdout)
 		for i, info in enumerate(tasks):
 			tags = await downloader.get_tags(info)
 			pixels, attrs = await downloader.get_image(info, is_raw)
-			dir_.get(i, "tags.json").write_text(json.dumps(tags))
-			dir_.get(i, "json").write_text(attrs)
-			dir_.get(i, "slice").write_bytes(pixels)
+			dir_.joinpath(f"{i}.tags.json").write_text(json.dumps(tags))
+			dir_.joinpath(f"{i}.json").write_text(attrs)
+			dir_.joinpath(f"{i}.slice").write_bytes(pixels)
 
 
-def build_dcm_from_responses(source_dir: Path):
+def build_dcm_from_responses(source: Path, out_dir: Path = None):
 	"""
 	读取所有临时文件夹的数据（fetch_responses 下载的），合并成 DCM 文件。
 
-	:param source_dir: fetch_responses 的 save_t
+	:param source: fetch_responses 的 save_to 参数
+	:param out_dir: 保存到哪里？默认跟通常下载的位置一样。
 	"""
-	with source_dir.joinpath("ImageSet.json").open() as fp:
+	with source.joinpath("ImageSet.json").open() as fp:
 		image_set = json.load(fp)
 		name_map = {s["description"].rstrip(): s for s in image_set["displaySets"]}
-		save_dir = _get_save_dir(image_set)
 
-	for series_dir in source_dir.iterdir():
+	if not out_dir:
+		out_dir = _get_save_dir(image_set)
+
+	for series_dir in source.iterdir():
 		if series_dir.is_file():
 			continue
 		info = name_map[series_dir.name]
-		out_dir = save_dir / pathify(series_dir.name)
-		out_dir.mkdir(parents=True, exist_ok=True)
+		size = len(info["images"])
+		dir_ = SeriesDirectory(out_dir / pathify(series_dir.name), size)
 
-		for i in range(1, len(info["images"]) + 1):
-			tags = series_dir.joinpath(f"{i}-tags.json").read_text("utf8")
+		for i in range(size):
+			tags = series_dir.joinpath(f"{i}.tags.json").read_text("utf8")
 			if tags == "[]":
 				continue
 			pixels = series_dir.joinpath(f"{i}.slice").read_bytes()
-			_write_dicom(json.loads(tags), pixels, out_dir / f"{i}.dcm")
+			_write_dicom(json.loads(tags), pixels, dir_.get(i, "dcm"))
 
 
 def diff_tags(pivot, another):
@@ -276,3 +280,7 @@ def diff_tags(pivot, another):
 	for item in another:
 		if tag_map[item["tag"]] != item["value"]:
 			print(f"{item['tag']} {item['name']}: {item['value']}")
+
+
+if __name__ == '__main__':
+	build_dcm_from_responses(Path("download/temp"))
