@@ -106,14 +106,13 @@ def make_unique_dir(path: Path):
 	except OSError:
 		if not path.is_dir():
 			raise
-		matches = _filename_serial_re.match(path.stem)
+		matches = _filename_serial_re.match(path.name)
 		if matches:
 			n = int(matches.group(2)) + 1
 			alt = f"{matches.group(1)} ({n})"
 		else:
-			alt = f"{path.stem} (1)"
+			alt = f"{path.name} (1)"
 
-		alt += path.suffix
 		return make_unique_dir(path.parent / alt)
 
 
@@ -139,7 +138,7 @@ class SeriesDirectory:
 			self._path = make_unique_dir(self._suggested)
 		else:
 			self._path = self._suggested
-			self._path.mkdir(exist_ok=True)
+			self._path.mkdir(parents=True, exist_ok=True)
 
 	def get(self, index: int, extension: str) -> Path:
 		"""

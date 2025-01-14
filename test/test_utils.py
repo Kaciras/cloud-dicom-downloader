@@ -63,3 +63,16 @@ def test_make_unique_dir_2():
 		created.rmdir()
 	finally:
 		already_exists.rmdir()
+
+
+def test_make_unique_dir_3():
+	already_exists = Path("download/5.0 x 5.0")
+	already_exists.mkdir(parents=True)
+	try:
+		created = make_unique_dir(already_exists)
+
+		assert created.is_dir()
+		assert created == Path("download/5.0 x 5.0 (1)")
+		created.rmdir()
+	finally:
+		already_exists.rmdir()
