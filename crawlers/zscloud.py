@@ -46,14 +46,10 @@ async def run(share_url):
 	code = dict(parse_qsl(share_url[share_url.rfind("?") + 1:]))["code"]
 	origin = URL(share_url).origin()
 
-	async with new_http_client(origin, headers={"Referer": "https://zscloud.zs-hospital.sh.cn/film/"}) as client:
-
-		async with client.get("/film/") as response:
-			pass
-
-		async with client.get("/uap-operation-api/v1/config/get?appKey=film",
-		                      raise_for_status=False) as response:
-			pass
+	headers = {
+		"Referer": "https://zscloud.zs-hospital.sh.cn"
+	}
+	async with new_http_client(origin, headers=headers) as client:
 
 		async with client.get("/film/api/m/config/getConfigs") as response:
 			raw = await response.text()
