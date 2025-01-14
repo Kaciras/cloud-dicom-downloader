@@ -78,7 +78,7 @@ async def run(share_url: str):
 
 	print(f"下载申康医院发展中心的 DICOM，报告 ID：{sid}")
 
-	async with new_http_client(base_url=origin) as client:
+	async with new_http_client(origin) as client:
 		detail = await api_get(client, query, "/api001/study/detail", sid=sid, mode=0)
 		series_list = await api_get(client, query, "/api001/series/list", sid=sid)
 
