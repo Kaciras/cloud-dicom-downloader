@@ -2,6 +2,7 @@ aiohttp~=3.11
 playwright~=1.49
 tqdm~=4.67
 yarl~=1.18
+pycryptodomex~=3.21
 pydicom~=3.0
 
 # Required by tools

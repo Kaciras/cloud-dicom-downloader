@@ -3,7 +3,7 @@ import sys
 
 from yarl import URL
 
-from crawlers import szjudianyun, hinacom, cq12320, shdc
+from crawlers import szjudianyun, hinacom, cq12320, shdc, zscloud
 
 
 async def main():
@@ -17,6 +17,8 @@ async def main():
 		module_ = szjudianyun
 	elif host == "ylyyx.shdc.org.cn":
 		module_ = shdc
+	elif host == "zscloud.zs-hospital.sh.cn":
+		module_ = zscloud
 	else:
 		return print("不支持的网站，详情见 README.md")
 
