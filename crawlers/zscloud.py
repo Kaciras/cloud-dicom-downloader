@@ -1,38 +1,39 @@
 import base64
 import json
 import random
-import sys
 from pathlib import Path
 from urllib.parse import parse_qsl
 
 from Cryptodome.Cipher import AES
-from tqdm import tqdm
 from yarl import URL
 
-from crawlers._utils import new_http_client, SeriesDirectory, pathify
+from crawlers._utils import new_http_client, SeriesDirectory, pathify, tqdme
 
+# 在 index-5e0ce69c.js 里通过常量计算出来的，应该变得没那么频繁吧。
 _LAST_KEY = "c6657583e265f4ca"
+
+
+def pkcs7_unpad(data: bytes):
+	return data[:-data[-1]]
 
 
 def _decrypt_aes_without_iv(input_: str):
 	secret = _LAST_KEY.encode("utf-8")
 	input_ = base64.b64decode(input_.encode())
+
 	cipher = AES.new(secret, AES.MODE_ECB)
 	decrypted = cipher.decrypt(input_)
 	return pkcs7_unpad(decrypted).decode("utf-8")
 
 
 def _cetus_decrypt_aes(cetus: dict, input_: str):
-	key, iv = cetus["cipherSecretKey"].encode("utf-8"), cetus["cipherIv"].encode("utf-8")
+	key = cetus["cipherSecretKey"].encode("utf-8")
+	iv = cetus["cipherIv"].encode("utf-8")
 	input_ = base64.b64decode(input_.encode())
 
 	cipher = AES.new(key, AES.MODE_CBC, iv)
 	decrypted = cipher.decrypt(input_)
 	return pkcs7_unpad(decrypted).decode("utf-8")
-
-
-def pkcs7_unpad(data: bytes):
-	return data[:-data[-1]]
 
 
 def _get_save_dir(study: dict):
@@ -42,14 +43,20 @@ def _get_save_dir(study: dict):
 	return Path(f"download/{patient}-{exam}-{date}")
 
 
+def _call_image_service(client, token, params):
+	params["randnum"] = random.uniform(0, 1)
+	return client.get(
+		"/vna/image/Home/ImageService",
+		params=params,
+		headers={"Authorization": token}
+	)
+
+
 async def run(share_url):
 	code = dict(parse_qsl(share_url[share_url.rfind("?") + 1:]))["code"]
-	origin = URL(share_url).origin()
+	origin = str(URL(share_url).origin())
 
-	headers = {
-		"Referer": "https://zscloud.zs-hospital.sh.cn"
-	}
-	async with new_http_client(origin, headers=headers) as client:
+	async with new_http_client(origin, headers={"Referer": origin}) as client:
 
 		async with client.get("/film/api/m/config/getConfigs") as response:
 			raw = await response.text()
@@ -59,9 +66,9 @@ async def run(share_url):
 		async with client.post("/film/api/m/doctor/getStudyByShareCodeWithToken", json={"code": code}) as response:
 			body = await response.json()
 			if body["code"] != "U000000":
-				return print(body)
+				raise Exception(body["data"])
 
-			# 响应里说 Token 的有效期是 3600，一个小时应该能下完就不刷新了。
+			# 响应里说 Token 的有效期是 3600，一个小时应该能下完，就不刷新了。
 			access_token = body["data"]["uapToken"]
 
 			data = _cetus_decrypt_aes(cetus_aes_key, body["data"]["encryptionStudyInfo"])
@@ -75,7 +82,7 @@ async def run(share_url):
 		async with client.get("/viewer/2d/Dapeng/Viewer/GetCredentialsToken") as response:
 			body = await response.json()
 			body = json.loads(body["result"])
-			credentials_token = body["access_token"]
+			credentials_token = "Bearer " + body["access_token"]
 
 		params = {
 			"CommandType": "GetHierachy",
@@ -85,15 +92,8 @@ async def run(share_url):
 			"UserId": "UIH",
 			"appendTags": "PI-film-include",
 			"includeDeleted": "false",
-			"randnum": str(random.uniform(0, 1)),
 		}
-		async with client.get(
-				"/vna/image/Home/ImageService",
-				params=params,
-				headers={
-					"Authorization": access_token
-				}
-		) as response:
+		async with _call_image_service(client, access_token, params) as response:
 			body = await response.json()
 			series_list = body["PatientInfo"]["StudyList"][0]["SeriesList"]
 
@@ -102,7 +102,7 @@ async def run(share_url):
 			slices = series["ImageList"]
 			dir_ = SeriesDirectory(save_to / desc, len(slices))
 
-			for i, image in enumerate(tqdm(slices, desc=desc, unit="张", file=sys.stdout)):
+			for i, image in tqdme(slices, desc=desc):
 				params = {
 					"CommandType": "GetImage",
 					"ContentType": "application/dicom",
@@ -110,14 +110,6 @@ async def run(share_url):
 					"StudyUID": info["studyInstanceUid"],
 					"SeriesUID": series["UID"],
 					"includeDeleted": "false",
-					"randnum": str(random.uniform(0, 1))
 				}
-				async with client.get(
-						"/vna/image/Home/ImageService",
-						params=params,
-						headers={
-							"Authorization": "Bearer " + credentials_token
-						}
-				) as response:
+				async with _call_image_service(client, credentials_token, params) as response:
 					dir_.get(i, "dcm").write_bytes(await response.read())
-

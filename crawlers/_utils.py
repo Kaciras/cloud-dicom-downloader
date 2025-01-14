@@ -11,13 +11,14 @@ import aiohttp
 from pydicom import Dataset
 from pydicom.tag import Tag
 from pydicom.valuerep import VR, STR_VR, INT_VR, FLOAT_VR
+from tqdm import tqdm
 
 # 这儿的请求头也就意思一下，真要处理请求特征反爬还得使用自动化浏览器。
 _HEADERS = {
 	"Accept-Language": "zh,zh-CN;q=0.7,en;q=0.3",
 	"Accept": "*/*",
 	"Upgrade-Insecure-Requests": "1",
-	"User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+	"User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/134.0",
 }
 
 
@@ -62,6 +63,12 @@ def new_http_client(*args, **kwargs):
 		kwargs["headers"] = _HEADERS
 
 	return aiohttp.ClientSession(*args, **kwargs)
+
+
+def tqdme(*args, **kwargs):
+	kwargs.setdefault("file", sys.stdout)
+	kwargs.setdefault("unit", "张")
+	return enumerate(tqdm(*args, **kwargs))
 
 
 _illegal_path_chars = re.compile(r'[<>:"/\\?*|]')
