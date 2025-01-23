@@ -174,6 +174,7 @@ def main():
 	parser = argparse.ArgumentParser(description="DICOM Convertor")
 	parser.add_argument("format")
 	parser.add_argument("source")
+	parser.add_argument("-e", "--entropy")
 	parser.add_argument("-ifps", type=int)
 	parser.add_argument("-ofps", type=int)
 	args = parser.parse_args()
@@ -191,14 +192,14 @@ def main():
 			slices = SliceList.from_pictures(files)
 
 	if codec == "dcm":
-		slices.to_dcm_files(OUTPUT_DIR / source.name)
+		slices.to_dcm_files(OUTPUT_DIR / source.name, args.entropy)
 	elif codec in Image.EXTENSION:
 		slices.to_pictures(OUTPUT_DIR / source.name, codec)
 	elif codec in VIDEO_CODECS:
 		name = source.stem + "." + codec
 		slices.to_video(OUTPUT_DIR / name, args.ofps)
 	else:
-		print(F"命令行参数有错误，未知的输出格式：{codec}")
+		print(F"命令行参数存在错误，未知的输出格式：{codec}")
 
 
 if __name__ == "__main__":
