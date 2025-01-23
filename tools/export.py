@@ -127,16 +127,16 @@ class SliceList(list[np.ndarray]):
 		:param entropy: 种子字符串，用于生成稳定的 UID
 		"""
 		hasher, blobs = sha256(b"Kaciras DICOM Convertor"), []
-		out_dir = SeriesDirectory(save_to, len(blobs), False)
+		out_dir = SeriesDirectory(save_to, len(self), False)
 
 		for px in self:
 			buffer = px.tobytes()
 			blobs.append(buffer)
 			hasher.update(buffer)
 
-		h64 = str(int.from_bytes(hasher.digest()))
+		h64 = str(int.from_bytes(hasher.digest())).zfill(32)
 		study_uid = generate_uid(entropy_srcs=[entropy] if entropy else None)
-		series_uid = PYDICOM_ROOT_UID + h64.zfill(32)
+		series_uid = PYDICOM_ROOT_UID + h64[:32]
 
 		for i, px in enumerate(self):
 			ds = Dataset()
@@ -181,9 +181,11 @@ def main():
 
 	OUTPUT_DIR.mkdir(exist_ok=True)
 	codec, source = args.format.lower(), Path(args.source)
+	out_name = OUTPUT_DIR / source.name
 
 	if source.is_file():
 		slices = SliceList.from_video(source, args.ifps)
+		out_name = out_name.with_suffix("")
 	else:
 		files = list(source.iterdir())
 		if files[0].suffix == ".dcm":
@@ -192,11 +194,11 @@ def main():
 			slices = SliceList.from_pictures(files)
 
 	if codec == "dcm":
-		slices.to_dcm_files(OUTPUT_DIR / source.name, args.entropy)
+		slices.to_dcm_files(out_name, args.entropy, args.ss, args.ps)
 	elif codec in Image.EXTENSION:
-		slices.to_pictures(OUTPUT_DIR / source.name, codec)
+		slices.to_pictures(out_name, codec)
 	elif codec in VIDEO_CODECS:
-		name = source.stem + "." + codec
+		name = out_name.name + "." + codec
 		slices.to_video(OUTPUT_DIR / name, args.ofps)
 	else:
 		print(F"命令行参数存在错误，未知的输出格式：{codec}")
