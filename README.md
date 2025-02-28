@@ -8,7 +8,7 @@
   * [medicalimagecloud.com](#medicalimagecloudcom)
   * [mdmis.cq12320.cn](#mdmiscq12320cn)
   * [ylyyx.shdc.org.cn](#ylyyxshdcorgcn)
-  * [zscloud.zs-hospital.sh.cn](#zshospitalshcn)
+  * [zscloud.zs-hospital.sh.cn](#zs-hospitalshcn)
 * [开发](#开发)
 
 ## 安装
