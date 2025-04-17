@@ -1,21 +1,6 @@
 aiohttp~=3.11
-playwright~=1.49
+playwright~=1.50
 tqdm~=4.67
 yarl~=1.18
 pycryptodomex~=3.21
 pydicom~=3.0
-
-# Required by tools
-pylibjpeg~=2.0
-numpy~=2.2
-moviepy~=2.1
-Pillow~=10.4
-proglog~=0.1
-
-# pylibjpeg[all]
-pylibjpeg-libjpeg~=2.3
-pylibjpeg-openjpeg~=2.4
-pylibjpeg-rle~=2.0
-
-# Test dependencies
-pytest~=8.3
