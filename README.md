@@ -13,13 +13,11 @@
 
 ## 安装
 
-请先确保安装了 Python >= 13，然后安装依赖：
-
-```
-pip install -r requirements.txt
-```
-
-根据网站的不同，运行所需的参数也不一样，具体见下面支持的站点。
+- 请先确保安装了 Python，如果没有则去 [https://www.python.org](https://www.python.org/downloads) 下载并安装。
+- 下载本项目（不会的可以点击右上角的 Code -> Download ZIP，然后解压）。
+- 进入解压后的目录，运行命令行（右键 -> 在终端中打开）。
+- 输入`pip install -r requirements.txt`并按回车键。
+- 等待运行完成，然后根据要下载的网站，选择下面一节中的的命令运行。
 
 ## 支持的站点
 
