@@ -53,7 +53,12 @@ def _get_auth(query: dict, image_name: str):
 
 
 def _get_save_dir(study: dict):
-	date = TIME_SEPS.sub("", study["study_datetime"])
+	# 它这里有好多时间，除此之外还有 update_time、create_time，有些可能为 null。
+	date = study.get("study_datetime")
+	if not date:
+		date = study["study_date"] + study["study_time"]
+	date = TIME_SEPS.sub("", date)
+
 	exam = pathify(study["description"] or study["modality_type"])
 	patient = pathify(study["patient"]["name"])
 	return Path(f"download/{patient}-{exam}-{date}")
