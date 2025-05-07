@@ -35,7 +35,8 @@ def _sign(query: dict, params: dict):
 	:param params API 请求的参数，签名会添加到上面
 	"""
 	params["nonce_str"] = NONCE
-	params["token"] = query["token"]
+	if "token" in query:
+		params["token"] = query["token"]
 	input_ = urlencode(params) + "&key=" + KEY
 	params["sign"] = md5(input_.encode()).hexdigest()
 
@@ -64,28 +65,45 @@ def _get_save_dir(study: dict):
 	return Path(f"download/{patient}-{exam}-{date}")
 
 
-async def api_get(client, query: dict, path: str, **params):
+async def request(client, query: dict, path: str, form = None, **params):
 	_sign(query, params)
 
-	async with client.get(path, params=params) as response:
+	if not form:
+		coroutine = client.get(path, params=params)
+	else:
+		h = {"content-type": "application/x-www-form-urlencoded"}
+		coroutine = client.post(path, params=params, headers=h, data=form)
+
+	async with coroutine as response:
 		body = await response.json(content_type=None)
 
 	if body["code"] == 0:
 		return body
-	raise Exception(f"错误（{body['code']}），链接过期，或是网站更新了")
+	raise Exception(f"错误（{body['code']}），您的链接已过期，或是网站更新了。")
+
+
+async def share_verify(client, query: dict):
+	form = f"appid={query['appid']}&share_id={query['share_id']}"
+	share = await request(client, query, "/api001/share_verify", form)
+	share_url = share["url_link"]
+	return dict(parse_qsl(share_url[share_url.rfind("?") + 1:]))
 
 
 # 这个网站没有烦人的跳转登录，但是有简单的 API 签名。
 async def run(share_url: str):
 	query = dict(parse_qsl(share_url[share_url.rfind("?") + 1:]))
-	sid = query["sid"]
 	origin = URL(share_url).origin()
 
-	print(f"下载申康医院发展中心的 DICOM，报告 ID：{sid}")
-
 	async with new_http_client(origin) as client:
-		detail = await api_get(client, query, "/api001/study/detail", sid=sid, mode=0)
-		series_list = await api_get(client, query, "/api001/series/list", sid=sid)
+		# 另一种入口，好像是报告主页面而不是分享的链接。需要先创建一个分享。
+		if "share_id" in query:
+			query = await share_verify(client, query)
+
+		sid = query["sid"]
+		print(f"下载申康医院发展中心的 DICOM，报告 ID：{sid}")
+
+		detail = await request(client, query, "/api001/study/detail", sid=sid, mode=0)
+		series_list = await request(client, query, "/api001/series/list", sid=sid)
 
 		save_to = _get_save_dir(detail["study"])
 		print(f'保存到: {save_to}\n')

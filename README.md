@@ -13,7 +13,7 @@
 
 ## 安装
 
-- 请先确保安装了 Python，如果没有则去 [https://www.python.org](https://www.python.org/downloads) 下载并安装。
+- 请先确保安装了 Python，没有就去 [https://www.python.org](https://www.python.org/downloads) 下载并安装。
 - 下载本项目（不会的可以点击右上角的 Code -> Download ZIP，然后解压）。
 - 进入解压后的目录，运行命令行（右键 -> 在终端中打开）。
 - 输入`pip install -r requirements.txt`并按回车键。
@@ -52,7 +52,10 @@ URL 格式：`https://mdmis.cq12320.cn/wcs1/mdmis-app/h5/#/share/detail?share_id
 
 ### ylyyx.shdc.org.cn
 
-上海申康医院发展中心的在线影像查看器，URL 格式为`https://ylyyx.shdc.org.cn/#/home?sid=<number>&token=<hex>`。
+上海申康医院发展中心的在线影像查看器，URL 格式支持以下两种：
+
+- `https://ylyyx.shdc.org.cn/#/home?sid=<number>&token=<hex>`
+- `https://ylyyx.shdc.org.cn/code.html?appid=<xxx>&share_id=<uuid>`
 
 ```
 python downloader.py <url>
