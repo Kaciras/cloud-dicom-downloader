@@ -4,6 +4,7 @@ https://blog.kaciras.com/article/39/download-raw-dicom-from-cloud-ct-viewer
 """
 import json
 import random
+import re
 import string
 import sys
 from io import BytesIO
@@ -11,11 +12,13 @@ from pathlib import Path
 from typing import Optional
 
 from aiohttp import ClientWebSocketResponse
-from pydicom import dcmread
+from pydicom import dcmread, Dataset
 from tqdm import trange
 from yarl import URL
 
 from crawlers._utils import new_http_client, SeriesDirectory, pathify
+
+_WHITE_SPACES = re.compile(r"\s+")
 
 separator = "b1u2d3d4h5a"
 
@@ -50,12 +53,18 @@ async def _get_dcm(ws, hospital_id, study, series, instance):
 	return (await anext(ws)).data[1:]
 
 
+def _get_save_dir(ds: Dataset):
+	n = _WHITE_SPACES.sub("", str(ds.PatientName).title())
+	s = ds.StudyDescription or ds.Modality
+	t = f"{ds.StudyDate}{ds.StudyTime}".rsplit(".", 1)[0]
+	return Path(f"download/{n}-{s}-{t}")
+
+
 async def download_study(ws: ClientWebSocketResponse, info):
 	hospital_id, study = info["hosipital"].split(separator, 2)
 	series_list, sizes = info["series"], info["series_dicom_number"]
 
-	save_dir = Path(f"download/{hospital_id}-{study}")
-	print(f"下载 szjudianyun 的 DICOM 到 {save_dir}")
+	study_dir: Optional[Path] = None
 
 	for sid in series_list:
 		if sid.startswith("dfyfilm"):  # 最后会有一张非 DICOM 图片。
@@ -70,10 +79,15 @@ async def download_study(ws: ClientWebSocketResponse, info):
 			# 只有先读取一个影像才能确定序列目录的名字。
 			if not dir_:
 				dicom_file = dcmread(BytesIO(data))
+
+				if not study_dir:
+					study_dir = _get_save_dir(dicom_file)
+					print(f"下载 szjudianyun 的 DICOM 到 {study_dir}")
+
 				desc = dicom_file.SeriesDescription or sid
 				desc = pathify(desc)
 
-				dir_ = SeriesDirectory(save_dir / desc, sizes[sid])
+				dir_ = SeriesDirectory(study_dir / desc, sizes[sid])
 				progress.set_description(desc)
 
 			dir_.get(i, "dcm").write_bytes(data)
