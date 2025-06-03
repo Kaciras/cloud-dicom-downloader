@@ -1,8 +1,8 @@
 # Required by tools
 pylibjpeg~=2.0
 numpy~=2.2
-moviepy~=2.1
-Pillow~=10.4
+moviepy~=2.2
+Pillow~=11.2
 proglog~=0.1
 
 # pylibjpeg[all]
