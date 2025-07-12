@@ -79,7 +79,9 @@ async def request(client, query: dict, path: str, form = None, **params):
 
 	if body["code"] == 0:
 		return body
-	raise Exception(f"错误（{body['code']}），您的链接已过期，或是网站更新了。")
+
+	message = body['msg'] or "从未遇见过的问题，请联系开发者处理"
+	raise Exception(f"API 错误（{body['code']}），{message}。")
 
 
 async def share_verify(client, query: dict):
