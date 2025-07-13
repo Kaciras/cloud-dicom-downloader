@@ -1,11 +1,13 @@
 import asyncio
 import re
+import sys
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 
 from playwright.async_api import Playwright, Response, async_playwright, Page
 from pydicom import dcmread
+from tqdm import tqdm
 from yarl import URL
 
 from crawlers._utils import pathify
@@ -74,11 +76,14 @@ async def x(playwright: Playwright, url: str):
 	study = await wait_study_info(page)
 	print(f"{study.patient}，序列数：{len(study.series)}，共 {study.total} 张图")
 
-	global _total_files
+	global _total_files, progress
 	_total_files = study.total
+	progress = tqdm(total=study.total, initial=_downloaded_count, unit="张", file=sys.stdout)
 
 	if _downloaded_count < study.total:
 		await waiter.wait()
+
+	progress.close()
 	await browser.close(reason="Close as completed.")
 
 	out_dir = Path(f"download/{_study_id}")
@@ -87,9 +92,10 @@ async def x(playwright: Playwright, url: str):
 		s.rename(s.with_name(real_name))
 
 	final_name = pathify(f"{study.patient}-{study.kind}-{study.time}")
-	print(f"下载完成，保存位置 {out_dir.rename(final_name)}")
+	print(f"下载完成，保存位置 {out_dir.rename(out_dir.with_name(final_name))}")
 
 
+progress = None
 _downloaded_count = 0
 _total_files = 2**31
 _desc_re = re.compile(r"\d+\^(.+)")  # 052006^肺部CT
@@ -113,6 +119,8 @@ async def dump_http(response: Response):
 	dir_.write_bytes(body)
 
 	_downloaded_count += 1
+	if progress:
+		progress.update()
 	if _downloaded_count == _total_files:
 		await response.frame.page.close()
 
