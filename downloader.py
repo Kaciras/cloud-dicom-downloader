@@ -3,7 +3,7 @@ import sys
 
 from yarl import URL
 
-from crawlers import szjudianyun, hinacom, cq12320, shdc, zscloud
+from crawlers import szjudianyun, hinacom, cq12320, shdc, zscloud, ftimage
 
 
 async def main():
@@ -19,6 +19,8 @@ async def main():
 		module_ = shdc
 	elif host == "zscloud.zs-hospital.sh.cn":
 		module_ = zscloud
+	elif host == "app.ftimage.cn":
+		module_ = ftimage
 	else:
 		return print("不支持的网站，详情见 README.md")
 
