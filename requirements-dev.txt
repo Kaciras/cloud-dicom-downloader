@@ -2,7 +2,7 @@
 pylibjpeg~=2.0
 numpy~=2.2
 moviepy~=2.2
-Pillow~=11.2
+Pillow~=11.3
 proglog~=0.1
 
 # pylibjpeg[all]
