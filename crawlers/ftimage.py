@@ -10,7 +10,7 @@ from pydicom import dcmread
 from tqdm import tqdm
 from yarl import URL
 
-from crawlers._utils import pathify
+from crawlers._utils import pathify, launch_browser
 
 
 async def _select_text(context, selector: str):
@@ -58,7 +58,7 @@ async def wait_study_info(page: Page):
 
 
 async def x(playwright: Playwright, url: str):
-	browser = await playwright.chromium.launch()
+	browser = await launch_browser(playwright)
 	context = await browser.new_context()
 	waiter = asyncio.Event()
 
@@ -74,7 +74,7 @@ async def x(playwright: Playwright, url: str):
 
 	await page.goto(url, wait_until="commit")
 	study = await wait_study_info(page)
-	print(f"{study.patient}，序列数：{len(study.series)}，共 {study.total} 张图")
+	print(f"{study.patient}，{len(study.series)} 个序列，共 {study.total} 张图。")
 
 	global _total_files, progress
 	_total_files = study.total
@@ -86,25 +86,25 @@ async def x(playwright: Playwright, url: str):
 	progress.close()
 	await browser.close(reason="Close as completed.")
 
-	out_dir = Path(f"download/{_study_id}")
-	for s in out_dir.iterdir():
-		real_name, size = study.series[s.name]
-		s.rename(s.with_name(real_name))
-
 	final_name = pathify(f"{study.patient}-{study.kind}-{study.time}")
-	print(f"下载完成，保存位置 {out_dir.rename(out_dir.with_name(final_name))}")
+	save_to = Path(f"download/{_study_id}")
+	save_to = save_to.rename(save_to.with_name(final_name))
+
+	for s in save_to.iterdir():
+		desc, size = study.series[s.name]
+		s.rename(s.with_name(desc))
+
+	print(f"下载完成，保存位置 {save_to}")
 
 
-progress = None
 _downloaded_count = 0
-_total_files = 2**31
-_desc_re = re.compile(r"\d+\^(.+)")  # 052006^肺部CT
+_total_files = 0xFFFFFFFF
 _study_id = None
-_info = None
+progress: tqdm | None = None
 
 
 async def dump_http(response: Response):
-	global _downloaded_count, _total_files, _study_id, _info
+	global _downloaded_count, _total_files, _study_id
 
 	url = URL(response.request.url).path
 	if not url.endswith(".dcm"):
@@ -125,7 +125,6 @@ async def dump_http(response: Response):
 		await response.frame.page.close()
 
 
-async def run(share_url):
+async def run(share_url, *_):
 	async with async_playwright() as playwright:
 		await x(playwright, share_url)
-

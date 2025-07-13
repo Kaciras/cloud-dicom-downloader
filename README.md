@@ -81,3 +81,5 @@ python downloader.py <url>
 ```
 python downloader.py <url>
 ```
+
+该爬虫依赖浏览器，在 Windows 上默认使用 Edge，如果启动失败请尝试运行`playwright install`改用捆绑的浏览器。
