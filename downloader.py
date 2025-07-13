@@ -19,7 +19,7 @@ async def main():
 		module_ = shdc
 	elif host == "zscloud.zs-hospital.sh.cn":
 		module_ = zscloud
-	elif host == "app.ftimage.cn":
+	elif host == "app.ftimage.cn" or host == "yyx.ftimage.cn":
 		module_ = ftimage
 	else:
 		return print("不支持的网站，详情见 README.md")

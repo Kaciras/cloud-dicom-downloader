@@ -1,10 +1,56 @@
 import asyncio
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
-from playwright.async_api import Playwright, Response, async_playwright
+from playwright.async_api import Playwright, Response, async_playwright, Page
 from yarl import URL
+
+from crawlers._utils import pathify
+
+
+async def _select_text(context, selector: str):
+	return await (await context.wait_for_selector(selector)).text_content()
+
+
+@dataclass(frozen=True, eq=False)
+class _FitImageStudyInfo:
+	patient: str
+	kind: str
+	time: str
+	total: int
+	series: dict[str, tuple[str, int]]
+
+
+_RE_STUDY_SIZE = re.compile(r"序列:\s(\d+)\s影像:\s(\d+)")
+_RE_SERIES_SIZE = re.compile(r"共 (\d+)张")  # 共 65张
+
+
+async def wait_study_info(page: Page):
+	time = await _select_text(page, ".patientInfo > *:nth-child(5) > .value")
+	patient = await _select_text(page, ".patientInfo > *:nth-child(1) > .name")
+	kind = await _select_text(page, ".patientInfo > *:nth-child(2) > .value")
+
+	title = await page.wait_for_selector(".title > small")
+	matches = _RE_STUDY_SIZE.search(await title.text_content())
+	series, slices = int(matches.group(1)), int(matches.group(2))
+
+	tabs, series_table = [], {}
+	while len(tabs) < series:
+		tabs = await page.query_selector_all("li[data-seriesuuid]")
+		await asyncio.sleep(0.5)
+
+	for tab in tabs:
+		sid = await tab.get_attribute("data-seriesuuid")
+		name = await _select_text(tab, ".desc > .text")
+		size = await _select_text(tab, ".desc > .total")
+		series_table[sid] = (
+			name,
+			int(_RE_SERIES_SIZE.match(size).group(1)),
+		)
+
+	return _FitImageStudyInfo(patient.strip(), kind, time, slices, series_table)
 
 
 async def x(playwright: Playwright, url: str):
@@ -23,17 +69,37 @@ async def x(playwright: Playwright, url: str):
 			waiter.set()
 
 	context.on("page", lambda x: x.on("close", check_all_closed))
-
 	page = await context.new_page()
 	context.on("response", dump_http)
 
 	await page.goto(url, wait_until="commit")
-	await waiter.wait()
+	study = await wait_study_info(page)
+	print(f"{study.patient}，序列数：{len(study.series)}，共 {study.total} 张图")
+
+	global _total_files
+	_total_files = study.total
+
+	if _downloaded_count < study.total:
+		await waiter.wait()
 	await browser.close(reason="Close as completed.")
 
 
+	out_dir = Path(f"download/{_study_id}")
+	for s in out_dir.iterdir():
+		slices = os.listdir(s)
+		for slice in slices:
+			pass
+
+		real_name = study.series[s.name][0]
+		s.rename(s.with_name(real_name))
+
+	final_name = pathify(f"{study.patient}-{study.kind}-{study.time}")
+	out_dir.rename(final_name)
+	print(f"下载完成，保存位置 {out_dir}")
+
+
 _downloaded_count = 0
-_total_files = 0
+_total_files = 2**31
 _desc_re = re.compile(r"\d+\^(.+)")  # 052006^肺部CT
 _study_id = None
 _info = None
@@ -56,44 +122,11 @@ async def dump_http(response: Response):
 	dir_.write_bytes(await response.body())
 
 	_downloaded_count += 1
-
-	if _total_files == 0:
-		_info: dict = await response.frame.evaluate(_js_code)
-		print(_info)
-		for _, count in _info.values():
-			_total_files += int(_RE_SERIES_SIZE.match(count).group(1))
-
 	if _downloaded_count == _total_files:
-		print("<UNK>")
-
-
-# 玩不明白 Playwright 的选择器，还是改用 JS 来解析网页内容。
-_js_code = """function () {
-	const items = document.querySelectorAll("li[data-seriesuuid]");
-	const seriesTable = {};
-	for (const item of items) {
-		const id = item.getAttribute("data-seriesuuid");
-		const desc = item.querySelector(".desc");
-		const [a, b] = desc.children;
-		seriesTable[id] = [a.textContent, b.textContent];
-	}
-	const patient = document.querySelector(".info > .name").textContent;
-	const description = document.querySelector(".report-list > dd").textContent;
-	return { seriesTable, patient, description };
-}"""
-
-_RE_STUDY_SIZE = re.compile("序列:\s(\d+)\s影像:\s(\d+)")
-_RE_SERIES_SIZE = re.compile(r"共 (\d+)张")  # 共 65张
+		await response.frame.page.close()
 
 
 async def run(share_url):
 	async with async_playwright() as playwright:
 		await x(playwright, share_url)
 
-	for s in Path(f"download/{_study_id}").iterdir():
-		slices = os.listdir(s)
-		for slice in slices:
-			pass
-
-		real_name = _info[s.name][0]
-		s.rename(s.with_name(real_name))
