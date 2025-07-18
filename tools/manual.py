@@ -4,11 +4,12 @@ import shutil
 from dataclasses import dataclass
 from io import TextIOWrapper
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Tuple
 
-from playwright.async_api import Playwright, Response, async_playwright, WebSocket
+from playwright.async_api import Response, async_playwright, WebSocket, Browser
 from yarl import URL
 
+from crawlers._browser import launch_browser
 from crawlers._utils import pathify, SeriesDirectory
 
 _DUMP_DIR = Path(__file__) / "../../download/dumps"
@@ -180,7 +181,7 @@ class WebSocketDumpFile:
 
 	file: Path
 	url: URL
-	frames: list[(bool, bytes | str)]
+	frames: list[Tuple[bool, bytes | str]]
 
 	@classmethod
 	def read_from(cls, dump_file: Path):
@@ -199,12 +200,7 @@ class WebSocketDumpFile:
 		return cls(dump_file, url, frames)
 
 
-async def run(playwright: Playwright, url: str):
-	browser = await playwright.chromium.launch(
-		headless=False,
-		executable_path=r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-	)
-
+async def run(browser: Browser, url: str):
 	context = await browser.new_context()
 	waiter = asyncio.Event()
 
@@ -242,7 +238,8 @@ async def dump_network(url: str):
 	_DUMP_DIR.mkdir(parents=True)
 
 	async with async_playwright() as playwright:
-		await run(playwright, url)
+		async with launch_browser(playwright) as browser:
+			await run(browser, url)
 
 
 @dataclass(slots=True, eq=False, repr=False)

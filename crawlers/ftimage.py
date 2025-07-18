@@ -5,16 +5,13 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 
-from playwright.async_api import Playwright, Response, async_playwright, Page
+from playwright.async_api import Response, async_playwright, Page, Browser
 from pydicom import dcmread
 from tqdm import tqdm
 from yarl import URL
 
-from crawlers._utils import pathify, launch_browser
-
-
-async def _select_text(context, selector: str):
-	return await (await context.wait_for_selector(selector)).text_content()
+from crawlers._browser import wait_text, launch_browser
+from crawlers._utils import pathify
 
 
 @dataclass(frozen=True, eq=False)
@@ -31,9 +28,9 @@ _RE_SERIES_SIZE = re.compile(r"共 (\d+)张")
 
 
 async def wait_study_info(page: Page):
-	patient = await _select_text(page, ".patientInfo > *:nth-child(1) > .name")
-	kind = await _select_text(page, ".patientInfo > *:nth-child(2) > .value")
-	time = await _select_text(page, ".patientInfo > *:nth-child(5) > .value")
+	patient = await wait_text(page, ".patientInfo > *:nth-child(1) > .name")
+	kind = await wait_text(page, ".patientInfo > *:nth-child(2) > .value")
+	time = await wait_text(page, ".patientInfo > *:nth-child(5) > .value")
 
 	title = await page.wait_for_selector(".title > small")
 	matches = _RE_STUDY_SIZE.search(await title.text_content())
@@ -46,8 +43,8 @@ async def wait_study_info(page: Page):
 
 	for tab in tabs:
 		sid = await tab.get_attribute("data-seriesuuid")
-		name = await _select_text(tab, ".desc > .text")
-		size = await _select_text(tab, ".desc > .total")
+		name = await wait_text(tab, ".desc > .text")
+		size = await wait_text(tab, ".desc > .total")
 		series_table[sid] = (
 			name,
 			int(_RE_SERIES_SIZE.match(size).group(1)),
@@ -59,7 +56,7 @@ async def wait_study_info(page: Page):
 
 class FitImageDownloader:
 	"""
-	飞图医疗影像平台的下载器，该平台自称被 3000 的多个医院被采用。
+	飞图医疗影像平台的下载器，该平台自称被 3000 的多家医院采用。
 	"""
 
 	_total = 0xFFFFFFFF
@@ -68,16 +65,16 @@ class FitImageDownloader:
 	_progress: tqdm | None = None
 
 	async def on_response(self, response: Response):
-		url = URL(response.request.url).path
+		asset_name = URL(response.request.url).path
 
-		if not url.endswith(".dcm"):
+		if not asset_name.endswith(".dcm"):
 			return
 
-		_, _, _, self._study_id, series_id, _, name = url.split("/")
+		_, _, _, self._study_id, series_id, _, _ = asset_name.split("/")
 		body = await response.body()
-		ds = dcmread(BytesIO(body))
+		index = dcmread(BytesIO(body)).InstanceNumber
 
-		dir_ = Path(f"download/{self._study_id}/{series_id}/{ds.InstanceNumber}.dcm")
+		dir_ = Path(f"download/{self._study_id}/{series_id}/{index}.dcm")
 		dir_.parent.mkdir(parents=True, exist_ok=True)
 		dir_.write_bytes(body)
 
@@ -87,20 +84,19 @@ class FitImageDownloader:
 			self._progress.update()
 
 		if self._downloaded == self._total:
-			await response.frame.page.close()
+			await response.frame.page.context.close()
 
-	async def download_all(self, playwright: Playwright, url: str):
-		browser = await launch_browser(playwright)
+	def _fix_series_name(self, study: _FitImageStudyInfo):
+		save_to = Path(f"download/{self._study_id}")
+		for s in save_to.iterdir():
+			desc, size = study.series[s.name]
+			s.rename(s.with_name(desc))
+
+		final_name = pathify(f"{study.patient}-{study.kind}-{study.time}")
+		return save_to.rename(save_to.with_name(final_name))
+
+	async def download_all(self, browser: Browser, url: str):
 		context = await browser.new_context()
-		waiter = asyncio.Event()
-
-		# 关闭窗口并不结束浏览器进程，只能依靠页面计数来判断。
-		# https://github.com/microsoft/playwright/issues/2946
-		def check_all_closed():
-			if len(context.pages) == 0:
-				waiter.set()
-
-		context.on("page", lambda x: x.on("close", check_all_closed))
 		page = await context.new_page()
 		context.on("response", self.on_response)
 
@@ -108,26 +104,21 @@ class FitImageDownloader:
 		study = await wait_study_info(page)
 		print(f"{study.patient}，{len(study.series)} 个序列，共 {study.total} 张图。")
 
+		# tqdm 不能多个进度条同时动，虽然这个站是顺序下载，但异步过程还是不可依靠。
 		self._total = study.total
 		self._progress = tqdm(total=study.total, initial=self._downloaded, unit="张", file=sys.stdout)
 
-		if self._downloaded < study.total:
-			await waiter.wait()
+		# 下得比这里跑得还快，应该不可能，但还是检查下更完备些。
+		if self._downloaded >= study.total:
+			await context.close()
+		else:
+			await context.wait_for_event("close", timeout=0)
 
 		self._progress.close()
-		await browser.close(reason="Close as completed.")
-
-		final_name = pathify(f"{study.patient}-{study.kind}-{study.time}")
-		save_to = Path(f"download/{self._study_id}")
-		save_to = save_to.rename(save_to.with_name(final_name))
-
-		for s in save_to.iterdir():
-			desc, size = study.series[s.name]
-			s.rename(s.with_name(desc))
-
-		print(f"下载完成，保存位置 {save_to}")
+		print(f"下载完成，保存位置 {self._fix_series_name(study)}")
 
 
 async def run(share_url, *_):
 	async with async_playwright() as playwright:
-		await FitImageDownloader().download_all(playwright, share_url)
+		async with await launch_browser(playwright) as browser:
+			await FitImageDownloader().download_all(browser, share_url)

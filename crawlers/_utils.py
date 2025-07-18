@@ -8,7 +8,6 @@ from pathlib import Path
 from zipfile import ZipFile
 
 import aiohttp
-from playwright.async_api import Playwright, Error, Browser
 from pydicom import Dataset
 from pydicom.tag import Tag
 from pydicom.valuerep import VR, STR_VR, INT_VR, FLOAT_VR
@@ -67,6 +66,9 @@ def new_http_client(*args, **kwargs):
 
 
 def tqdme(*args, **kwargs):
+	"""
+	enumerate + tqdm，顺便设置了一些参数的默认值。
+	"""
 	kwargs.setdefault("file", sys.stdout)
 	kwargs.setdefault("unit", "张")
 	return enumerate(tqdm(*args, **kwargs))
@@ -202,26 +204,3 @@ def suggest_series_name(ds: Dataset):
 		h = h.digest()
 		return b64encode(h)[:20].decode()
 
-
-async def launch_browser(playwright: Playwright) -> Browser:
-	driver, path = "", None
-
-	for argument in sys.argv:
-		if argument.startswith("--browser="):
-			driver, path = argument[10:].split(":", 1)
-
-	if path:
-		return await getattr(playwright, driver).launch(executable_path=path)
-
-	try:
-		return await playwright.chromium.launch()
-	except Error as e:
-		if not e.message.startswith("BrowserType.launch: Executable doesn't exist"):
-			raise
-
-	if sys.platform == "win32":
-		print("PlayWright: 使用 Windows 自带的 Edge 浏览器。")
-		return await playwright.chromium.launch(
-			executable_path=r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
-
-	raise Exception("在该系统上运行必须提供浏览器的路径。")
