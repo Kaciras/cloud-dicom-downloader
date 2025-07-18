@@ -4,13 +4,12 @@
 
 * [使用步骤](#使用步骤)
 * [支持的站点](#支持的站点)
-  * [qr.szjudianyun.com](#qrszjudianyuncom)
   * [medicalimagecloud.com](#medicalimagecloudcom)
   * [mdmis.cq12320.cn](#mdmiscq12320cn)
   * [ylyyx.shdc.org.cn](#ylyyxshdcorgcn)
   * [zscloud.zs-hospital.sh.cn](#zs-hospitalshcn)
   * [ftimage.cn](#ftimagecn)
-* [开发](#开发)
+  * [qr.szjudianyun.com](#qrszjudianyuncom)
 
 ## 使用步骤
 
@@ -22,14 +21,6 @@
 - 等待运行完成，然后根据要下载的网站，选择下面一节中的的命令运行。
 
 ## 支持的站点
-
-### qr.szjudianyun.com
-
-URL 格式为`http://qr.szjudianyun.com/<xxx>/?a=<hospital_id>&b=<study>&c=<password>`，可从报告单扫码得到。
-
-```
-python downloader.py <url>
-```
 
 ### medicalimagecloud.com
 
@@ -83,3 +74,11 @@ python downloader.py <url>
 ```
 
 该爬虫依赖浏览器，在 Windows 上默认使用 Edge，如果启动失败请尝试运行`playwright install`改用捆绑的浏览器。
+
+### qr.szjudianyun.com
+
+URL 格式为`http://qr.szjudianyun.com/<xxx>/?a=<hospital_id>&b=<study>&c=<password>`，可从报告单扫码得到。
+
+```
+python downloader.py <url>
+```
