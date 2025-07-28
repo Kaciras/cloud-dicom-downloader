@@ -9,8 +9,8 @@ from yarl import URL
 
 from crawlers._utils import new_http_client, SeriesDirectory, pathify, tqdme
 
-# 在 index-5e0ce69c.js 里通过常量计算出来的，应该变得没那么频繁吧。
-_LAST_KEY = "c6657583e265f4ca"
+# 加载时计算的常量，网站更新可能变（已遇到一次）。
+_LAST_KEY = "c57b1589172b85531c2dbad73c5e9056"
 
 
 def pkcs7_unpad(data: bytes):
@@ -51,7 +51,6 @@ def _call_image_service(client, token, params):
 		headers={"Authorization": token}
 	)
 
-
 async def run(share_url):
 	code = dict(parse_qsl(share_url[share_url.rfind("?") + 1:]))["code"]
 	origin = str(URL(share_url).origin())
@@ -67,9 +66,6 @@ async def run(share_url):
 			body = await response.json()
 			if body["code"] != "U000000":
 				raise Exception(body["data"])
-
-			# 响应里说 Token 的有效期是 3600，一个小时应该能下完，就不刷新了。
-			access_token = body["data"]["uapToken"]
 
 			data = _cetus_decrypt_aes(cetus_aes_key, body["data"]["encryptionStudyInfo"])
 			study = json.loads(data)["records"][0]
@@ -93,7 +89,7 @@ async def run(share_url):
 			"appendTags": "PI-film-include",
 			"includeDeleted": "false",
 		}
-		async with _call_image_service(client, access_token, params) as response:
+		async with _call_image_service(client, credentials_token, params) as response:
 			body = await response.json()
 			series_list = body["PatientInfo"]["StudyList"][0]["SeriesList"]
 
