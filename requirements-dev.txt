@@ -1,6 +1,6 @@
 # Required by tools
 pylibjpeg~=2.0
-numpy~=2.2
+numpy~=2.3
 moviepy~=2.2
 Pillow~=11.3
 proglog~=0.1
@@ -11,4 +11,4 @@ pylibjpeg-openjpeg~=2.4
 pylibjpeg-rle~=2.0
 
 # Test dependencies
-pytest~=8.3
+pytest~=8.4

@@ -1,5 +1,5 @@
 aiohttp~=3.12
-playwright~=1.53
+playwright~=1.54
 tqdm~=4.67
 yarl~=1.18
 pycryptodomex~=3.23
