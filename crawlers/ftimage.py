@@ -5,12 +5,12 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 
-from playwright.async_api import Response, async_playwright, Page, Browser
+from playwright.async_api import Response, Page, BrowserContext
 from pydicom import dcmread
 from tqdm import tqdm
 from yarl import URL
 
-from crawlers._browser import wait_text, launch_browser
+from crawlers._browser import wait_text, run_with_browser, PlaywrightCrawler
 from crawlers._utils import pathify
 
 
@@ -54,17 +54,22 @@ async def wait_study_info(page: Page):
 	return _FitImageStudyInfo(patient, kind, time, slices, series_table)
 
 
-class FitImageDownloader:
+class FitImageDownloader(PlaywrightCrawler):
 	"""
 	飞图医疗影像平台的下载器，该平台自称被 3000 的多家医院采用。
 	"""
-
 	_total = 0xFFFFFFFF
 	_downloaded = 0
 	_study_id = None
 	_progress: tqdm | None = None
 
-	async def on_response(self, response: Response):
+	share_url: str
+
+	def __init__(self, share_url: str):
+		super().__init__()
+		self.share_url = share_url
+
+	async def _on_response(self, response: Response):
 		asset_name = URL(response.request.url).path
 
 		if not asset_name.endswith(".dcm"):
@@ -95,12 +100,10 @@ class FitImageDownloader:
 		final_name = pathify(f"{study.patient}-{study.kind}-{study.time}")
 		return save_to.rename(save_to.with_name(final_name))
 
-	async def download_all(self, browser: Browser, url: str):
-		context = await browser.new_context()
+	async def _do_run(self, context: BrowserContext):
 		page = await context.new_page()
-		context.on("response", self.on_response)
 
-		await page.goto(url, wait_until="commit")
+		await page.goto(self.share_url, wait_until="commit")
 		study = await wait_study_info(page)
 		print(f"{study.patient}，{len(study.series)} 个序列，共 {study.total} 张图。")
 
@@ -119,6 +122,4 @@ class FitImageDownloader:
 
 
 async def run(share_url, *_):
-	async with async_playwright() as playwright:
-		async with await launch_browser(playwright) as browser:
-			await FitImageDownloader().download_all(browser, share_url)
+	await run_with_browser(FitImageDownloader(share_url))
