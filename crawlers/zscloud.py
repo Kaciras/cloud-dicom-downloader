@@ -7,14 +7,10 @@ from urllib.parse import parse_qsl
 from Cryptodome.Cipher import AES
 from yarl import URL
 
-from crawlers._utils import new_http_client, SeriesDirectory, pathify, tqdme
+from crawlers._utils import new_http_client, SeriesDirectory, pathify, tqdme, pkcs7_unpad
 
 # 加载时计算的常量，网站更新可能变（已遇到一次）。
 _LAST_KEY = "c57b1589172b85531c2dbad73c5e9056"
-
-
-def pkcs7_unpad(data: bytes):
-	return data[:-data[-1]]
 
 
 def _decrypt_aes_without_iv(input_: str):

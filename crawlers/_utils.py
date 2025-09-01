@@ -74,6 +74,15 @@ def tqdme(*args, **kwargs):
 	return enumerate(tqdm(*args, **kwargs))
 
 
+def pkcs7_unpad(data: bytes):
+	return data[:-data[-1]]
+
+
+def pkcs7_pad(data: bytes):
+	size = 16 - len(data) % 16
+	return data + size.to_bytes(1) * size
+
+
 _illegal_path_chars = re.compile(r'[<>:"/\\?*|]')
 
 
@@ -203,4 +212,3 @@ def suggest_series_name(ds: Dataset):
 		h = sha256(ds.SeriesInstanceUID)
 		h = h.digest()
 		return b64encode(h)[:20].decode()
-

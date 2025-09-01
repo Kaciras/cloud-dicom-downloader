@@ -10,6 +10,7 @@
   * [zscloud.zs-hospital.sh.cn](#zs-hospitalshcn)
   * [ftimage.cn](#ftimagecn)
   * [qr.szjudianyun.com](#qrszjudianyuncom)
+  * [ss.mtywcloud.com](#ssmtywcloudcom)
 
 ## 使用步骤
 
@@ -78,6 +79,14 @@ python downloader.py <url>
 ### qr.szjudianyun.com
 
 URL 格式为`http://qr.szjudianyun.com/<xxx>/?a=<hospital_id>&b=<study>&c=<password>`，可从报告单扫码得到。
+
+```
+python downloader.py <url>
+```
+
+### ss.mtywcloud.com
+
+明天医网的移动影像处理工作站，URL 格式为`https://ss.mtywcloud.com/ICCWebClient/Image/Viewer?AllowQuery=0&DicomDirPath=<URL>&OrganizationID=xxx&Anonymous=true&Token=xxx`。
 
 ```
 python downloader.py <url>
