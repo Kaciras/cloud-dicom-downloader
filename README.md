@@ -11,6 +11,8 @@
   * [ftimage.cn](#ftimagecn)
   * [qr.szjudianyun.com](#qrszjudianyuncom)
   * [ss.mtywcloud.com](#ssmtywcloudcom)
+  * [m.yzhcloud.com](#myzhcloudcom)
+  * [work.sugh.net](#worksughnet)
 
 ## 使用步骤
 
@@ -95,6 +97,14 @@ python downloader.py <url>
 ### m.yzhcloud.com
 
 URL 格式为`https://m.yzhcloud.com/w_viewer_2/?study_instance_uid=xxx&org_id=xxx`
+
+```
+python downloader.py <url>
+```
+
+### work.sugh.net
+
+URL 格式为`https://work.sugh.net:8002/pc/auth-viewer?clinicalShareToken=<token>`
 
 ```
 python downloader.py <url>
