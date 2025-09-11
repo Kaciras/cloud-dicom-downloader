@@ -3,7 +3,7 @@ import sys
 
 from yarl import URL
 
-from crawlers import szjudianyun, hinacom, cq12320, shdc, zscloud, ftimage, mtywcloud
+from crawlers import szjudianyun, hinacom, cq12320, shdc, zscloud, ftimage, mtywcloud, yzhcloud
 
 
 async def main():
@@ -21,6 +21,8 @@ async def main():
 		module_ = zscloud
 	elif host == "app.ftimage.cn" or host == "yyx.ftimage.cn":
 		module_ = ftimage
+	elif host == "m.yzhcloud.com":
+		module_ = yzhcloud
 	elif host == "ss.mtywcloud.com":
 		module_ = mtywcloud
 	else:

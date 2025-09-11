@@ -91,3 +91,11 @@ python downloader.py <url>
 ```
 python downloader.py <url>
 ```
+
+### m.yzhcloud.com
+
+URL 格式为`https://m.yzhcloud.com/w_viewer_2/?study_instance_uid=xxx&org_id=xxx`
+
+```
+python downloader.py <url>
+```
