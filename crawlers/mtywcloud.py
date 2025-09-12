@@ -1,13 +1,9 @@
-import re
 import urllib.parse
-from pathlib import Path
 
 from Cryptodome.Cipher import AES
 from yarl import URL
 
-from crawlers._utils import new_http_client, pkcs7_pad, SeriesDirectory, tqdme
-
-TIME_SEPS = re.compile(r"[-: ]")
+from crawlers._utils import new_http_client, pkcs7_pad, SeriesDirectory, tqdme, suggest_save_dir
 
 _key = b"561382DAD3AE48A89AC3003E15D75CC0"
 _iv = b"1234567890000000"
@@ -34,9 +30,7 @@ async def run(url):
 				raise Exception(body["Message"])
 			info = body["Data"][0]
 
-		patient, exam, date = info["PatientName"], info["ModalitiesInStudy"], info["StudyDateTime"]
-		date = TIME_SEPS.sub("", date)
-		study_dir = Path(f"download/{patient}-{exam}-{date}")
+		study_dir = suggest_save_dir(info["PatientName"], info["ModalitiesInStudy"], info["StudyDateTime"])
 
 		for series in info["SeriesList"]:
 			desc = series["SeriesDescription"] or "定位像"

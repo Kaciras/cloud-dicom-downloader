@@ -1,11 +1,9 @@
 import random
-import re
 import string
-from pathlib import Path
 
 from yarl import URL
 
-from crawlers._utils import new_http_client, pathify, SeriesDirectory, tqdme
+from crawlers._utils import new_http_client, pathify, SeriesDirectory, tqdme, suggest_save_dir
 
 
 async def run(share_url: str):
@@ -40,10 +38,7 @@ async def run(share_url: str):
 			data = body["data"][0]
 			info, series_list = data["std"], data["sers"]
 
-		patient = up["patientName"]
-		exam = pathify(info["studyDescription"])
-		date = TIME_SEPS.sub("", info["studyDateTime"])
-		study_dir = Path(f"download/{patient}-{exam}-{date}")
+		study_dir = suggest_save_dir(up["patientName"], info["studyDescription"], info["studyDateTime"])
 		print(f"下载篮网云电子胶片到：{study_dir}")
 
 		hdrs = {
@@ -65,5 +60,3 @@ async def run(share_url: str):
 				async with client.get(f"{url}/instances/{instance['imageUID']}/", headers=hdrs) as response:
 					dir_.get(i, "dcm").write_bytes(await response.read())
 
-
-TIME_SEPS = re.compile(r"[-: ]")

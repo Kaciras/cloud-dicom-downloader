@@ -1,8 +1,6 @@
-from pathlib import Path
-
 from yarl import URL
 
-from crawlers._utils import new_http_client, SeriesDirectory, tqdme, pathify
+from crawlers._utils import new_http_client, SeriesDirectory, tqdme, pathify, suggest_save_dir
 
 
 async def run(share_url: str):
@@ -20,9 +18,8 @@ async def run(share_url: str):
 		async with client.get("w_viewer_2/index.php/home/index/ajax_get_patient_study", params=params) as response:
 			info = await response.json()
 
-		patient, exam, date = info["patient_name"], pathify(info["checkitems"]), info["study_date"]
 		cdn = URL(info["storage"]).with_scheme("https")
-		study_dir = Path(f"download/{patient}-{exam}-{date}")
+		study_dir = suggest_save_dir(info["patient_name"], info["checkitems"], info["study_date"])
 
 		for series in info["series"]:
 			instances = series["instance_ids"].split(",")

@@ -11,7 +11,7 @@ from tqdm import tqdm
 from yarl import URL
 
 from crawlers._browser import wait_text, run_with_browser, PlaywrightCrawler
-from crawlers._utils import pathify
+from crawlers._utils import suggest_save_dir
 
 
 @dataclass(frozen=True, eq=False)
@@ -97,8 +97,7 @@ class FitImageDownloader(PlaywrightCrawler):
 			desc, size = study.series[s.name]
 			s.rename(s.with_name(desc))
 
-		final_name = pathify(f"{study.patient}-{study.kind}-{study.time}")
-		return save_to.rename(save_to.with_name(final_name))
+		return save_to.rename(suggest_save_dir(study.patient, study.kind, study.time))
 
 	async def _do_run(self, context: BrowserContext):
 		page = await context.new_page()

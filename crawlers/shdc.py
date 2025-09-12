@@ -7,13 +7,12 @@ import string
 import sys
 import time
 from hashlib import md5
-from pathlib import Path
 from urllib.parse import parse_qsl, urlencode
 
 from tqdm import tqdm
 from yarl import URL
 
-from crawlers._utils import new_http_client, pathify, SeriesDirectory
+from crawlers._utils import new_http_client, pathify, SeriesDirectory, suggest_save_dir
 
 TABLE_62 = string.digits + string.ascii_lowercase + string.ascii_uppercase
 
@@ -55,14 +54,9 @@ def _get_auth(query: dict, image_name: str):
 
 def _get_save_dir(study: dict):
 	# 它这里有好多时间，除此之外还有 update_time、create_time，有些可能为 null。
-	date = study.get("study_datetime")
-	if not date:
-		date = study["study_date"] + study["study_time"]
-	date = TIME_SEPS.sub("", date)
-
+	date = study.get("study_datetime") or (study["study_date"] + study["study_time"])
 	exam = pathify(study["description"] or study["modality_type"])
-	patient = pathify(study["patient"]["name"])
-	return Path(f"download/{patient}-{exam}-{date}")
+	return suggest_save_dir(study["patient"]["name"], exam, date)
 
 
 async def request(client, query: dict, path: str, form = None, **params):

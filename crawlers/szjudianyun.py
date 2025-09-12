@@ -16,7 +16,7 @@ from pydicom import dcmread, Dataset
 from tqdm import trange
 from yarl import URL
 
-from crawlers._utils import new_http_client, SeriesDirectory, pathify
+from crawlers._utils import new_http_client, SeriesDirectory, pathify, suggest_save_dir
 
 _WHITE_SPACES = re.compile(r"\s+")
 
@@ -54,10 +54,10 @@ async def _get_dcm(ws, hospital_id, study, series, instance):
 
 
 def _get_save_dir(ds: Dataset):
-	n = _WHITE_SPACES.sub("", str(ds.PatientName).title())
-	s = ds.StudyDescription or ds.Modality
-	t = f"{ds.StudyDate}{ds.StudyTime}".rsplit(".", 1)[0]
-	return Path(f"download/{n}-{s}-{t}")
+	patient = _WHITE_SPACES.sub("", str(ds.PatientName).title())
+	desc = ds.StudyDescription or ds.Modality
+	datetime = f"{ds.StudyDate}{ds.StudyTime}".rsplit(".", 1)[0]
+	return suggest_save_dir(patient, desc, datetime)
 
 
 async def download_study(ws: ClientWebSocketResponse, info):

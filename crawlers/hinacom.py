@@ -17,12 +17,17 @@ from pydicom.tag import Tag
 from pydicom.uid import ExplicitVRLittleEndian, JPEG2000Lossless
 from tqdm import tqdm
 
-from crawlers._utils import pathify, new_http_client, parse_dcm_value, SeriesDirectory, make_unique_dir
+from crawlers._utils import pathify, new_http_client, parse_dcm_value, SeriesDirectory, make_unique_dir, \
+	suggest_save_dir
 
 _LINK_VIEW = re.compile(r"/Study/ViewImage\?studyId=([\w-]+)")
 _LINK_ENTRY = re.compile(r"window\.location\.href = '([^']+)'")
 _TARGET_PATH = re.compile(r'var TARGET_PATH = "([^"]+)"')
 _VAR_RE = re.compile(r'var (STUDY_ID|ACCESSION_NUMBER|STUDY_EXAM_UID|LOAD_IMAGE_CACHE_KEY) = "([^"]+)"')
+
+
+def _get_save_dir(ds):
+	return suggest_save_dir(ds["patientName"], ds["studyDescription"], ds["studyDate"])
 
 
 class HinacomDownloader:
@@ -132,13 +137,6 @@ class HinacomDownloader:
 			image_set = await response.json()
 
 		return HinacomDownloader(client, cache_key, image_set)
-
-
-def _get_save_dir(image_set):
-	exam = pathify(image_set["studyDescription"])
-	date = image_set["studyDate"]
-	patient = pathify(image_set["patientName"])
-	return Path(f"download/{patient}-{exam}-{date}")
 
 
 def _write_dicom(tag_list: list, image: bytes, filename: Path):

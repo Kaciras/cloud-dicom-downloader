@@ -1,13 +1,12 @@
 import base64
 import json
 import random
-from pathlib import Path
 from urllib.parse import parse_qsl
 
 from Cryptodome.Cipher import AES
 from yarl import URL
 
-from crawlers._utils import new_http_client, SeriesDirectory, pathify, tqdme, pkcs7_unpad
+from crawlers._utils import new_http_client, SeriesDirectory, pathify, tqdme, pkcs7_unpad, suggest_save_dir
 
 # 加载时计算的常量，网站更新可能变（已遇到一次）。
 _LAST_KEY = "c57b1589172b85531c2dbad73c5e9056"
@@ -33,10 +32,7 @@ def _cetus_decrypt_aes(cetus: dict, input_: str):
 
 
 def _get_save_dir(study: dict):
-	date = study["studyDatetime"] // 1000
-	exam = study["procedureItemName"]
-	patient = study["patientName"]
-	return Path(f"download/{patient}-{exam}-{date}")
+	return suggest_save_dir(study["patientName"], study["procedureItemName"], study["studyDatetime"] // 1000)
 
 
 def _call_image_service(client, token, params):
@@ -46,6 +42,7 @@ def _call_image_service(client, token, params):
 		params=params,
 		headers={"Authorization": token}
 	)
+
 
 async def run(share_url):
 	code = dict(parse_qsl(share_url[share_url.rfind("?") + 1:]))["code"]

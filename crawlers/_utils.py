@@ -18,7 +18,7 @@ _HEADERS = {
 	"Accept-Language": "zh,zh-CN;q=0.7,en;q=0.3",
 	"Accept": "*/*",
 	"Upgrade-Insecure-Requests": "1",
-	"User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/134.0",
+	"User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/142.0",
 }
 
 
@@ -106,6 +106,23 @@ def pathify(text: str):
 	这里把非法符号替换为 Unicode 的宽字符，虽然有点别扭但并不损失易读性。
 	"""
 	return _illegal_path_chars.sub(_to_full_width, text.strip())
+
+
+TIME_SEPS = re.compile(r"[-: ]")
+
+
+def suggest_save_dir(patient: str, desc: str, datetime: str):
+	"""
+	统一的函数用来确定影像的保存位置，名字一律为：[患者]-[检查]-[时间]
+	患者姓名可能有星号代替，所以也需要 `pathify` 一下。
+
+	:param patient: 患者名字
+	:param desc: 检查项目
+	:param datetime: 检查时间，尽量包含从年份到秒
+	"""
+	patient, desc = pathify(patient), pathify(desc)
+	datetime = TIME_SEPS.sub("", datetime)
+	return Path(f"download/{patient}-{desc}-{datetime}")
 
 
 _filename_serial_re = re.compile(r"^(.+?) \((\d+)\)$")
