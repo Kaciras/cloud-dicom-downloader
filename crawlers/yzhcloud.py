@@ -20,6 +20,7 @@ async def run(share_url: str):
 
 		cdn = URL(info["storage"]).with_scheme("https")
 		study_dir = suggest_save_dir(info["patient_name"], info["checkitems"], info["study_date"])
+		print(f"下载医众数字影像到：{study_dir}")
 
 		for series in info["series"]:
 			instances = series["instance_ids"].split(",")
