@@ -64,19 +64,23 @@ class HinacomDownloader:
 			"studyId": info['studyId'],
 			"imageId": info['imageId'],
 			"frame": "0",
-			"storageNodes": "",
+			"storageNodes": self.dataset["storageNode"],
 		}
 		async with self.client.get(api, params=params) as response:
 			return await response.json()
 
 	async def get_image(self, info, raw: bool):
-		s, i, ck = info['studyId'], info['imageId'], self.cache_key
+		s, i = info['studyId'], info['imageId'],
 		if raw:
 			api = f"imageservice/api/image/dicom/{s}/{i}/0/0"
 		else:
 			api = f"imageservice/api/image/j2k/{s}/{i}/0/3"
 
-		async with self.client.get(api, params={"ck": ck}) as response:
+		params = {
+			"storageNodes": self.dataset["storageNode"],
+			"ck": self.cache_key,
+		}
+		async with self.client.get(api, params=params) as response:
 			return await response.read(), response.headers["X-ImageFrame"]
 
 	async def download_all(self, is_raw=False):
