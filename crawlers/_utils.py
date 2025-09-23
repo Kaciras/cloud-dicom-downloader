@@ -111,7 +111,7 @@ def pathify(text: str):
 TIME_SEPS = re.compile(r"[-: ]")
 
 
-def suggest_save_dir(patient: str, desc: str, datetime: str | int):
+def suggest_save_dir(patient: str, desc: str, datetime: str):
 	"""
 	统一的函数用来确定影像的保存位置，名字一律为：[患者]-[检查]-[时间]
 	患者姓名可能有星号代替，所以也需要 `pathify` 一下。
@@ -121,7 +121,7 @@ def suggest_save_dir(patient: str, desc: str, datetime: str | int):
 	:param datetime: 检查时间，尽量包含从年份到秒
 	"""
 	patient, desc = pathify(patient), pathify(desc)
-	datetime = TIME_SEPS.sub("", str(datetime))
+	datetime = TIME_SEPS.sub("", datetime)
 	return Path(f"download/{patient}-{desc}-{datetime}")
 
 

@@ -1,6 +1,7 @@
 import base64
 import json
 import random
+from datetime import datetime
 from urllib.parse import parse_qsl
 
 from Cryptodome.Cipher import AES
@@ -31,10 +32,6 @@ def _cetus_decrypt_aes(cetus: dict, input_: str):
 	return pkcs7_unpad(decrypted).decode("utf-8")
 
 
-def _get_save_dir(study: dict):
-	return suggest_save_dir(study["patientName"], study["procedureItemName"], study["studyDatetime"] // 1000)
-
-
 def _call_image_service(client, token, params):
 	params["randnum"] = random.uniform(0, 1)
 	return client.get(
@@ -63,9 +60,12 @@ async def run(share_url):
 			data = _cetus_decrypt_aes(cetus_aes_key, body["data"]["encryptionStudyInfo"])
 			study = json.loads(data)["records"][0]
 
-			save_to = _get_save_dir(study)
+			save_to = suggest_save_dir(
+				study["patientName"],
+				study["procedureItemName"],
+				str(datetime.fromtimestamp(study["studyDatetime"] / 1000))
+			)
 			print(f'保存到: {save_to}')
-
 			info = study["studyLevelList"][0]
 
 		async with client.get("/viewer/2d/Dapeng/Viewer/GetCredentialsToken") as response:
