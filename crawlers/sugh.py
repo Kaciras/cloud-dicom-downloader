@@ -11,7 +11,7 @@ async def run(share_url: str):
 			"shareCode": "",
 			# 还有个 _ts 参数随机 base62 还缺几个字，估计是防缓存的就不加了。
 		}
-		async with client.get("/api/cloudfilm/api/studyInfo/getClinicalByShareCode", params) as response:
+		async with client.get("/api/cloudfilm/api/studyInfo/getClinicalByShareCode", params=params) as response:
 			body = await response.json()
 			if body["code"] != "200":
 				raise Exception(body["message"])
@@ -27,7 +27,7 @@ async def run(share_url: str):
 			"Referer": share_url,
 			"token": address.query["clinicalShareToken"],
 		}
-		async with client.get("/api/cloudfilm-mgt/api/v1/study/json/index", params, headers=headers) as response:
+		async with client.get("/api/cloudfilm-mgt/api/v1/study/json/index", params=params, headers=headers) as response:
 			body = await response.json()
 			if body["code"] != "200":
 				raise Exception(body["message"])
@@ -51,5 +51,5 @@ async def run(share_url: str):
 			dir_ = SeriesDirectory(study_dir / pathify(desc), len(instances))
 
 			for i, instance in tqdme(instances.values(), desc=desc):
-				async with client.get(f"{url}/instances/{instance['imageUID']}", headers=headers) as response:
+				async with client.get(f"{url}/instances/{instance['imageUID']}/", headers=headers) as response:
 					dir_.get(i, "dcm").write_bytes(await response.read())
