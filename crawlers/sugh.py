@@ -44,7 +44,8 @@ async def run(share_url: str):
 			"token": address.query["clinicalShareToken"],
 		}
 		for series in series_list.values():
-			url = "/api/cloudfilm-mgt/api/v1/dicom/studies/" + study_uid
+			# 这里的 StudyUID 跟第一个请求返回的的有可能不一样。
+			url = "/api/cloudfilm-mgt/api/v1/dicom/studies/" + info["studyUID"]
 			url = url + "/series/" + series["seriesUID"]
 
 			desc, instances = series["seriesDescription"], series["imgs"]
