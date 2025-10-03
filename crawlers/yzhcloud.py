@@ -28,6 +28,11 @@ async def run(share_url: str):
 			dir_ = SeriesDirectory(study_dir / pathify(desc), len(instances))
 
 			for i, name in tqdme(instances, desc=desc):
-				u = cdn.joinpath(f"{study_uid}/{series['series_number']}.{name}.dcm")
+				# 有可能出现 PNG、JPG 截屏图片作为一个序列。
+				sep, ext = name.find("|"), "dcm"
+				if sep != -1:
+					name, ext = name[:sep], name[sep + 1:]
+
+				u = cdn.joinpath(f"{study_uid}/{series['series_number']}.{name}.{ext}")
 				async with client.get(u) as response:
 					dir_.get(i, "dcm").write_bytes(await response.read())
