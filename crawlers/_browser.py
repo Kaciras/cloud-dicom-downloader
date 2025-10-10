@@ -16,14 +16,14 @@ async def launch_browser(playwright: Playwright) -> Browser:
 	考虑到 Playwright 的支持成熟度，还是尽可能地选择 chromium 系浏览器。
 	"""
 	try:
-		return await playwright.chromium.launch()
+		return await playwright.chromium.launch(headless=False)
 	except Error as e:
 		if not e.message.startswith("BrowserType.launch: Executable doesn't exist"):
 			raise
 
 	if sys.platform == "win32":
 		print("PlayWright: 使用 Windows 自带的 Edge 浏览器。")
-		return await playwright.chromium.launch(
+		return await playwright.chromium.launch(headless=False,
 			executable_path=r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
 
 	raise Exception("在该系统上运行必须提供浏览器的路径。")
@@ -91,7 +91,7 @@ async def run_with_browser(crawler: PlaywrightCrawler, **kwargs):
 
 	try:
 		async with await _browser.new_context(**kwargs) as context:
-			return crawler.run(context)
+			return await crawler.run(context)
 	finally:
 		if len(_browser.contexts) == 0:
 			await _browser.close()
