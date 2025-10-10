@@ -16,8 +16,9 @@ _VAR_RE = re.compile(r'var LOAD_IMAGE_CACHE_KEY = "([^"]*)"')
 
 class HinacomCrawlerPW(PlaywrightCrawler):
 
-	def __init__(self, view_link: str):
+	def __init__(self, view_link: str, raw_codec=False):
 		self.view_link = view_link
+		self.raw_codec = raw_codec
 
 	async def _on_response(self, response: Response):
 		asset_name = URL(response.request.url).path
@@ -25,16 +26,17 @@ class HinacomCrawlerPW(PlaywrightCrawler):
 		if asset_name != "/ImageViewer/GetImageSet":
 			return
 
-		self.dataset = await response.json()
-		print(self.dataset)
-
 		html = await response.frame.content()
-		self.cache_key = ck = _VAR_RE.search(html).group(1)
-		print(ck)
-		is_raw=False
+		self.base_url = URL(response.frame.url).origin()
+		self.dataset = await response.json()
+		self.cache_key = _VAR_RE.search(html).group(1)
 
-		ds = self.dataset
-		save_to = suggest_save_dir(ds["patientName"], ds["studyDescription"], ds["studyDate"])
+		save_to = suggest_save_dir(
+			self.dataset["patientName"],
+			self.dataset["studyDescription"],
+			self.dataset["studyDate"]
+		)
+		print(f'从海纳医信影响系统下载，保存到: {save_to}')
 
 		for series in self.dataset["displaySets"]:
 			name, no, images = pathify(series["description"]) or "Unnamed", series["seriesNumber"], series["images"]
@@ -49,14 +51,14 @@ class HinacomCrawlerPW(PlaywrightCrawler):
 				if len(tags) == 0:
 					continue
 
-				pixels, _ = await self.get_image(info, is_raw)
+				pixels, _ = await self.get_image(info)
 				_write_dicom(tags, pixels, dir_.get(i, "dcm"))
 
 		self.cks = await response.frame.page.context.cookies()
 		await response.frame.page.context.close()
 
 	async def get_tags(self, info):
-		api = "http://cloudpacs.jdyfy.com:8001/ImageViewer/GetImageDicomTags"
+		api = f"{self.base_url}/ImageViewer/GetImageDicomTags"
 		params = {
 			"studyId": info['studyId'],
 			"imageId": info['imageId'],
@@ -66,12 +68,12 @@ class HinacomCrawlerPW(PlaywrightCrawler):
 		response = await self._context.request.get(api, params=params)
 		return await response.json()
 
-	async def get_image(self, info, raw: bool):
+	async def get_image(self, info):
 		s, i = info['studyId'], info['imageId']
-		if raw:
-			api = f"http://cloudpacs.jdyfy.com:8001/imageservice/api/image/dicom/{s}/{i}/0/0"
+		if self.raw_codec:
+			api = f"{self.base_url}/imageservice/api/image/dicom/{s}/{i}/0/0"
 		else:
-			api = f"http://cloudpacs.jdyfy.com:8001/imageservice/api/image/j2k/{s}/{i}/0/3"
+			api = f"{self.base_url}/imageservice/api/image/j2k/{s}/{i}/0/3"
 
 		params = {"ck": self.cache_key}
 		if self.dataset["storageNode"]:
@@ -86,22 +88,20 @@ class HinacomCrawlerPW(PlaywrightCrawler):
 		await context.wait_for_event("close", timeout=0)
 
 
-async def run(share_url, password=None):
-	address, client = URL(share_url), new_http_client()
-#http://cloudpacs.jdyfy.com:38081/Study/ViewImage?studyId=b4ab0bac-afef-46cf-aa23-277aaf7c54df
-	# 手机尾号验证入口，但实际上 StudyId 写在页面里了，并不需要手机号。
-	if address.query["idType"] == "accessionnumber":
-		async with client.get(share_url) as response:
-			html = await response.text()
-			fields = _hidden_input_re.search(html)
-			sid = fields.group(1)
-			share_url = f"{address.origin()}/Study/ViewImage?studyId={sid}"
+async def run(share_url):
+	address = URL(share_url)
 
-	# 影像查看页的 URL 作为入口，从 returnUrl 回到跳转页来进入。
-	elif address.query["returnUrl"]:
-		share_url = address.query["returnUrl"]
+	async with new_http_client() as client:
+		# 手机尾号验证入口，但实际上 StudyId 写在页面里了，并不需要手机号。
+		if address.query["idType"] == "accessionnumber":
+			async with client.get(share_url) as response:
+				html = await response.text()
+				fields = _hidden_input_re.search(html)
+				sid = fields.group(1)
+				share_url = f"{address.origin()}/Study/ViewImage?studyId={sid}"
+
+		# 影像查看页的 URL 作为入口，从 returnUrl 回到跳转页来进入。
+		elif address.query["returnUrl"]:
+			share_url = address.query["returnUrl"]
 
 	await run_with_browser(HinacomCrawlerPW(share_url))
-
-	# async with await HinacomDownloader.from_vu(client, share_url) as downloader:
-	# 	await downloader.download_all("--raw" in [])
