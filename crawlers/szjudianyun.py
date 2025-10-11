@@ -13,7 +13,7 @@ from typing import Optional
 
 from aiohttp import ClientWebSocketResponse
 from pydicom import dcmread, Dataset
-from tqdm import trange
+from tqdm import tqdm
 from yarl import URL
 
 from crawlers._utils import new_http_client, SeriesDirectory, suggest_save_dir
@@ -70,24 +70,24 @@ async def download_study(ws: ClientWebSocketResponse, info):
 		if sid.startswith("dfyfilm"):  # 最后会有一张非 DICOM 图片。
 			continue
 
-		progress = trange(sizes[sid], unit="张", file=sys.stdout)
-		dir_: Optional[SeriesDirectory] = None
+		# 只有先读取一个影像才能确定目录的名字。
+		first = await _get_dcm(ws, hospital_id, study, sid, 0)
+		ds = dcmread(BytesIO(first))
 
-		for i in progress:
-			data = await _get_dcm(ws, hospital_id, study, sid, i)
+		if not study_dir:
+			study_dir = _get_save_dir(ds)
+			print(f"下载 szjudianyun 的 DICOM 到：{study_dir}")
 
-			# 只有先读取一个影像才能确定序列目录的名字。
-			if not dir_:
-				ds = dcmread(BytesIO(data))
+		description = ds.SeriesDescription or "定位像"
+		dir_ = SeriesDirectory(study_dir, ds.SeriesNumber, description, sizes[sid])
+		dir_.get(0, "dcm").write_bytes(first)
 
-				if not study_dir:
-					study_dir = _get_save_dir(ds)
-					print(f"下载 szjudianyun 的 DICOM 到 {study_dir}")
-
-				dir_ = SeriesDirectory(study_dir, ds.SeriesNumber, ds.SeriesDescription, sizes[sid])
-				progress.set_description(ds.SeriesDescription)
-
-			dir_.get(i, "dcm").write_bytes(data)
+		# 这里需要跳过已经下载的一个，tqdm 的迭代式写法好像做不到。
+		with tqdm(initial=1, total=sizes[sid], desc=description, unit="张", file=sys.stdout) as progress:
+			for i in range(1, sizes[sid]):
+				data = await _get_dcm(ws, hospital_id, study, sid, i)
+				progress.update(1)
+				dir_.get(i, "dcm").write_bytes(data)
 
 
 async def run(url):
