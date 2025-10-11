@@ -31,11 +31,13 @@ async def run(url):
 			info = body["Data"][0]
 
 		study_dir = suggest_save_dir(info["PatientName"], info["ModalitiesInStudy"], info["StudyDateTime"])
+		print(f"下载明天医网的云影像到：{study_dir}")
 
 		for series in info["SeriesList"]:
 			desc = series["SeriesDescription"] or "定位像"
+			number = series["SeriesNumber"]
 			slices = series["ImageList"]
-			dir_ = SeriesDirectory(study_dir / desc, len(slices))
+			dir_ = SeriesDirectory(study_dir, number, desc, len(slices))
 			for i, image in tqdme(slices, desc=desc):
 				params = {
 					"sopInstanceUID": image["SOPInstanceUID"],

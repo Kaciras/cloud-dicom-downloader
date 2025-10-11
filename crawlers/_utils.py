@@ -5,6 +5,7 @@ from base64 import b64encode
 from hashlib import sha256
 from io import TextIOWrapper
 from pathlib import Path
+from typing import Optional
 from zipfile import ZipFile
 
 import aiohttp
@@ -18,7 +19,7 @@ _HEADERS = {
 	"Accept-Language": "zh,zh-CN;q=0.7,en;q=0.3",
 	"Accept": "*/*",
 	"Upgrade-Insecure-Requests": "1",
-	"User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/142.0",
+	"User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/143.0",
 }
 
 
@@ -156,6 +157,7 @@ class SeriesDirectory:
 	"""
 	封装了创建序列文件夹，以及生成影像文件名的操作，并做了一些特殊处理：
 
+	- 目录名格式为：序号_描述，如有缺则单用一个，都没就叫 Unnamed。
 	- 防止序列目录名重复，自动添加编号后缀。
 	- 直到获取文件名准备写入时才创建目录，避免空文件夹。
 	- 映像文件名填充 0 前缀，确保列出文件操作能返回正确的顺序。
@@ -163,8 +165,16 @@ class SeriesDirectory:
 	影像文件的序号从 1 开始，符合一般人的习惯，其他地方仍然以 0 为起点。
 	"""
 
-	def __init__(self, path: Path, size: int, unique=True):
-		self._suggested = path
+	def __init__(self, study_dir: Path, number: Optional[int], desc: str, size: int, unique=True):
+		if desc and number is None:
+			self._suggested = study_dir / pathify(desc)
+		elif desc:
+			self._suggested = study_dir / F"[{number}] {pathify(desc)}"
+		elif number is None:
+			self._suggested = study_dir / "Unnamed"
+		else:
+			self._suggested = study_dir / str(number)
+
 		self._unique = unique
 		self._path = None
 		self._width = int(math.log10(size)) + 2

@@ -16,7 +16,7 @@ from pydicom import dcmread, Dataset
 from tqdm import trange
 from yarl import URL
 
-from crawlers._utils import new_http_client, SeriesDirectory, pathify, suggest_save_dir
+from crawlers._utils import new_http_client, SeriesDirectory, suggest_save_dir
 
 _WHITE_SPACES = re.compile(r"\s+")
 
@@ -78,17 +78,14 @@ async def download_study(ws: ClientWebSocketResponse, info):
 
 			# 只有先读取一个影像才能确定序列目录的名字。
 			if not dir_:
-				dicom_file = dcmread(BytesIO(data))
+				ds = dcmread(BytesIO(data))
 
 				if not study_dir:
-					study_dir = _get_save_dir(dicom_file)
+					study_dir = _get_save_dir(ds)
 					print(f"下载 szjudianyun 的 DICOM 到 {study_dir}")
 
-				desc = dicom_file.SeriesDescription or sid
-				desc = pathify(desc)
-
-				dir_ = SeriesDirectory(study_dir / desc, sizes[sid])
-				progress.set_description(desc)
+				dir_ = SeriesDirectory(study_dir, ds.SeriesNumber, ds.SeriesDescription, sizes[sid])
+				progress.set_description(ds.SeriesDescription)
 
 			dir_.get(i, "dcm").write_bytes(data)
 

@@ -1,6 +1,6 @@
 from yarl import URL
 
-from crawlers._utils import new_http_client, pathify, SeriesDirectory, tqdme, suggest_save_dir
+from crawlers._utils import new_http_client, SeriesDirectory, tqdme, suggest_save_dir
 
 
 async def run(share_url: str):
@@ -48,8 +48,8 @@ async def run(share_url: str):
 			url = "/api/cloudfilm-mgt/api/v1/dicom/studies/" + info["studyUID"]
 			url = url + "/series/" + series["seriesUID"]
 
-			desc, instances = series["seriesDescription"], series["imgs"]
-			dir_ = SeriesDirectory(study_dir / pathify(desc), len(instances))
+			desc, number, instances = series["seriesDescription"], series["seriesNumber"], series["imgs"]
+			dir_ = SeriesDirectory(study_dir, number, desc, len(instances))
 
 			for i, instance in tqdme(instances.values(), desc=desc):
 				async with client.get(f"{url}/instances/{instance['imageUID']}/", headers=headers) as response:

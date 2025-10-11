@@ -107,7 +107,7 @@ async def run(share_url: str):
 		for series in series_list["result"]:
 			desc = pathify(series["description"]) or "Unnamed"
 			names = series["names"].split(",")
-			dir_ = SeriesDirectory(save_to / desc, len(names))
+			dir_ = SeriesDirectory(save_to, None, desc, len(names))
 
 			tasks = tqdm(names, desc=desc, unit="张", file=sys.stdout)
 			for i, name in enumerate(tasks):

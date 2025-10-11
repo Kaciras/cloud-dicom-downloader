@@ -94,8 +94,8 @@ class HinacomDownloader:
 		print(f'保存到: {save_to}')
 
 		for series in self.dataset["displaySets"]:
-			name, images = pathify(series["description"]), series["images"]
-			dir_ = SeriesDirectory(save_to / name, len(images))
+			name, no, images = pathify(series["description"]) or "Unnamed", series["seriesNumber"], series["images"]
+			dir_ = SeriesDirectory(save_to, no, name, len(images))
 
 			tasks = tqdm(images, desc=name, unit="张", file=sys.stdout)
 			for i, info in enumerate(tasks):

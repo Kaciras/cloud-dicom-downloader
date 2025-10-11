@@ -7,7 +7,7 @@ from urllib.parse import parse_qsl
 from Cryptodome.Cipher import AES
 from yarl import URL
 
-from crawlers._utils import new_http_client, SeriesDirectory, pathify, tqdme, pkcs7_unpad, suggest_save_dir
+from crawlers._utils import new_http_client, SeriesDirectory, tqdme, pkcs7_unpad, suggest_save_dir
 
 # 加载时计算的常量，网站更新可能变（已遇到一次）。
 _LAST_KEY = "c57b1589172b85531c2dbad73c5e9056"
@@ -87,9 +87,8 @@ async def run(share_url):
 			series_list = body["PatientInfo"]["StudyList"][0]["SeriesList"]
 
 		for series in series_list:
-			desc = pathify(series["SeriesDes"] or "Unnamed")
-			slices = series["ImageList"]
-			dir_ = SeriesDirectory(save_to / desc, len(slices))
+			desc, number, slices = series["SeriesDes"], series["SeriesNum"], series["ImageList"]
+			dir_ = SeriesDirectory(save_to, number, desc, len(slices))
 
 			for i, image in tqdme(slices, desc=desc):
 				params = {

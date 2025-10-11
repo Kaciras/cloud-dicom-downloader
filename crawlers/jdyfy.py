@@ -39,8 +39,10 @@ class HinacomCrawlerPW(PlaywrightCrawler):
 		print(f'从海纳医信影响系统下载，保存到: {save_to}')
 
 		for series in self.dataset["displaySets"]:
-			name, no, images = pathify(series["description"]) or "Unnamed", series["seriesNumber"], series["images"]
-			dir_ = SeriesDirectory(save_to / name, len(images))
+			name = pathify(series["description"]) or "Unnamed"
+			number = series["seriesNumber"]
+			images = series["images"]
+			dir_ = SeriesDirectory(save_to, number, name, len(images))
 
 			tasks = tqdm(images, desc=name, unit="张", file=sys.stdout)
 			for i, info in enumerate(tasks):

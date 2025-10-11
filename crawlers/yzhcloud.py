@@ -1,6 +1,6 @@
 from yarl import URL
 
-from crawlers._utils import new_http_client, SeriesDirectory, tqdme, pathify, suggest_save_dir
+from crawlers._utils import new_http_client, SeriesDirectory, tqdme, suggest_save_dir
 
 
 async def run(share_url: str):
@@ -24,8 +24,9 @@ async def run(share_url: str):
 
 		for series in info["series"]:
 			instances = series["instance_ids"].split(",")
+			number = series["series_number"]
 			desc = series["series_description"]
-			dir_ = SeriesDirectory(study_dir / pathify(desc), len(instances))
+			dir_ = SeriesDirectory(study_dir, number, desc, len(instances))
 
 			for i, name in tqdme(instances, desc=desc):
 				# 有可能出现 PNG、JPG 截屏图片作为一个序列。
