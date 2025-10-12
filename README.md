@@ -2,6 +2,10 @@
 
 医疗云影像下载器，从在线报告下载 CT、MRI 等片子的 DICOM 文件。
 
+> [!WARNING]
+> 
+> 由于没有时间，本项目不再更新，也不再免费帮下载片子，如要下载可联系 [contact@kaciras.com](mailto:contact@kaciras.com)，每次检查 50￥
+
 * [使用步骤](#使用步骤)
 * [支持的站点](#支持的站点)
   * [medicalimagecloud.com](#medicalimagecloudcom)
