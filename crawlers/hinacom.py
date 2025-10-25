@@ -64,7 +64,7 @@ class HinacomDownloader:
 			"studyId": info['studyId'],
 			"imageId": info['imageId'],
 			"frame": "0",
-			"storageNodes": self.dataset["storageNode"],
+			"storageNodes": self.dataset["storageNode"] or "",
 		}
 		async with self.client.get(api, params=params) as response:
 			return await response.json()
@@ -77,7 +77,7 @@ class HinacomDownloader:
 			api = f"imageservice/api/image/j2k/{s}/{i}/0/3"
 
 		params = {
-			"storageNodes": self.dataset["storageNode"],
+			"storageNodes": self.dataset["storageNode"] or "",
 			"ck": self.cache_key,
 		}
 		async with self.client.get(api, params=params) as response:
