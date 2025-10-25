@@ -12,7 +12,7 @@ _BASE = "https://mdmis.cq12320.cn/wcs1/mdmis-app/h5"
 async def run(share_url, *args):
 	query = dict(parse_qsl(share_url[share_url.rfind("?") + 1:]))
 	client = new_http_client()
-	print(f"下载海纳医信 DICOM（重庆卫健委），share_id: {query["share_id"]}")
+	print(f"下载海纳医信 DICOM（重庆卫健委），share_id: {query['share_id']}")
 
 	# 入口页 https://mdmis.cq12320.cn/wcs1/mdmis-app/h5，拿 SF_cookie_15
 	(await client.get(share_url)).close()
