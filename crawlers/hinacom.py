@@ -112,10 +112,10 @@ class HinacomDownloader:
 	@staticmethod
 	async def from_url(client: ClientSession, viewer_url: str):
 		"""
-		从查看器页读取必要的信息，创建下载器，需要先登录并将 Cookies 保存到 client 中。
+		已经拿到最终查看器页的链接就使用该函数，需要先处理登录并拿到 Cookies。
 
 		:param client: 会话对象，要先拿到 ZFP_SessionId 和 ZFPXAUTH
-		:param viewer_url: 页面 URL，路径中要有 /ImageViewer/StudyView
+		:param viewer_url: 页面 URL，路径中有 /ImageViewer/StudyView
 		"""
 		async with client.get(viewer_url) as response:
 			html4 = await response.text()
@@ -141,6 +141,28 @@ class HinacomDownloader:
 			image_set = await response.json()
 
 		return HinacomDownloader(client, cache_key, image_set)
+
+	@staticmethod
+	async def from_viewer_link(client: ClientSession, redirect_url: str):
+		"""
+		能进入报告页之后就使用此函数，模拟点击右边的“查看影像”的链接，
+		之后是两次跳转，已发现多个网站是同样的流程所以提出来作为一个函数。
+
+		:param client: aiohttp 的会话
+		:param redirect_url: “查看影像” 链接的目标地址
+		"""
+		async with client.get(redirect_url) as response:
+			html2 = await response.text()
+			matches = _LINK_ENTRY.search(html2)
+
+		# 典型 URL: http://<domain>/entry/viewimage?token=<base64>
+		# 中间不知道为什么又要跳转一次，端口还变了。
+		async with client.get(matches.group(1)) as response:
+			html3 = await response.text("utf-8")
+			client._base_url = response.real_url.origin()
+			viewer_url = _TARGET_PATH.search(html3).group(1)
+
+		return await HinacomDownloader.from_url(client, viewer_url)
 
 
 def _write_dicom(tag_list: list, image: bytes, filename: Path):
@@ -186,31 +208,20 @@ async def run(share_url, password, *args):
 
 	# 先是入口页面，它会重定向到登录页并设置一个 Cookie
 	async with client.get(share_url) as response:
-		url = response.real_url
-		uuid = url.path.split("/")[-1]
+		report_url = response.real_url
+		uuid = report_url.path.split("/")[-1]
 
 	# 登录报告页，成功后又会拿到 Cookies，从中找查看影像的链接。
 	_headers = {"content-type": "application/x-www-form-urlencoded"}
-	async with client.post(url, data=f"id={uuid}&Password={password}", headers=_headers) as response:
+	async with client.post(report_url, data=f"id={uuid}&Password={password}", headers=_headers) as response:
 		html = await response.text()
 		match = _LINK_VIEW.search(html)
 		if not match:
 			raise Exception("链接不存在，可能被取消分享了。")
 
-		redirect_url = str(url.origin()) + match.group(0)
+		url = str(report_url.origin()) + match.group(0)
 
-	# 访问查影像的链接。
-	async with client.get(redirect_url) as response:
-		html2 = await response.text()
-		matches = _LINK_ENTRY.search(html2)
-
-	# 中间不知道为什么又要跳转一次，端口还变了。
-	async with client.get(matches.group(1)) as response:
-		html3 = await response.text("utf-8")
-		client._base_url = response.real_url.origin()
-		viewer_url = _TARGET_PATH.search(html3).group(1)
-
-	async with await HinacomDownloader.from_url(client, viewer_url) as downloader:
+	async with await HinacomDownloader.from_viewer_link(client, url) as downloader:
 		await downloader.download_all("--raw" in args)
 
 
