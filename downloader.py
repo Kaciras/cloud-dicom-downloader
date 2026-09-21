@@ -3,7 +3,7 @@ import sys
 
 from yarl import URL
 
-from crawlers import szjudianyun, hinacom, cq12320, shdc, zscloud, ftimage, mtywcloud, yzhcloud, sugh, jdyfy
+from crawlers import szjudianyun, hinacom, cq12320, shdc, zscloud, ftimage, mtywcloud, yzhcloud, sugh, jdyfy, jnrmyy
 
 
 async def main():
@@ -29,6 +29,8 @@ async def main():
 		module_ = sugh
 	elif host == "cloudpacs.jdyfy.com":
 		module_ = jdyfy
+	elif host == "yjp.jnrmyy.com":
+		module_ = jnrmyy
 	else:
 		return print("不支持的网站，详情见 README.md")
 

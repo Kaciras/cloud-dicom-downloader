@@ -65,6 +65,7 @@ def new_http_client(*args, **kwargs):
 	
 	# 使用 quote_cookie=False 避免对包含特殊字符的 cookie 值进行引号处理
 	kwargs.setdefault("cookie_jar", aiohttp.CookieJar(quote_cookie=False))
+	kwargs.setdefault("trust_env", True)
 
 	return aiohttp.ClientSession(*args, **kwargs)
 

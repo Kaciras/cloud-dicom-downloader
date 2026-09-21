@@ -38,6 +38,7 @@
   * [ss.mtywcloud.com](#ssmtywcloudcom)
   * [m.yzhcloud.com](#myzhcloudcom)
   * [work.sugh.net](#worksughnet)
+  * [yjp.jnrmyy.com](#yjpjnrmyycom)
 
 ## 使用步骤
 
@@ -130,6 +131,14 @@ python downloader.py <url>
 ### work.sugh.net
 
 URL 格式为`https://work.sugh.net:8002/pc/auth-viewer?clinicalShareToken=<token>`
+
+```
+python downloader.py <url>
+```
+
+### yjp.jnrmyy.com
+
+济宁市第一人民医院（CloudView 云胶片系统），URL 格式为 `https://yjp.jnrmyy.com/Dicom/IndexMobileNew?flagserver=0&urltoken=<token>&pat=1&imagetype=11`。
 
 ```
 python downloader.py <url>
